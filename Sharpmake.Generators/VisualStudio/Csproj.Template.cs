@@ -54,9 +54,17 @@ namespace Sharpmake.Generators.VisualStudio
     <ProjectTypeGuids>[projectTypeGuids]</ProjectTypeGuids>
     <PublishUrl>[options.PublishUrl]</PublishUrl>
     <InstallUrl>[options.InstallUrl]</InstallUrl>
+    <ManifestKeyFile>[options.ManifestKeyFile]</ManifestKeyFile>
+    <ManifestCertificateThumbprint>[options.ManifestCertificateThumbprint]</ManifestCertificateThumbprint>
+    <GenerateManifests>[options.GenerateManifests]</GenerateManifests>
+    <SignManifests>[options.SignManifests]</SignManifests>
+    <UseVSHostingProcess>[options.UseVSHostingProcess]</UseVSHostingProcess>
     <ProductName>[options.ProductName]</ProductName>
     <PublisherName>[options.PublisherName]</PublisherName>
+    <MinimumRequiredVersion>[options.MinimumRequiredVersion]</MinimumRequiredVersion>
     <WebPage>[options.WebPage]</WebPage>
+    <OpenBrowserOnPublish>[options.OpenBrowserOnPublish]</OpenBrowserOnPublish>
+    <CreateWebPageOnPublish>[options.CreateWebPageOnPublish]</CreateWebPageOnPublish>
     <BootstrapperComponentsUrl>[options.BootstrapperComponentsUrl]</BootstrapperComponentsUrl>
     <Install>[options.Install]</Install>
     <InstallFrom>[options.InstallFrom]</InstallFrom>
@@ -69,7 +77,10 @@ namespace Sharpmake.Generators.VisualStudio
     <CopyOutputSymbolsToOutputDirectory>[options.CopyOutputSymbolsToOutputDirectory]</CopyOutputSymbolsToOutputDirectory>
     <MapFileExtensions>[options.MapFileExtensions]</MapFileExtensions>
     <ApplicationRevision>[options.ApplicationRevision]</ApplicationRevision>
+    <ApplicationVersion>[options.ApplicationVersion]</ApplicationVersion>
     <UseApplicationTrust>[options.UseApplicationTrust]</UseApplicationTrust>
+    <CreateDesktopShortcut>[options.CreateDesktopShortcut]</CreateDesktopShortcut>
+    <PublishWizardCompleted>[options.PublishWizardCompleted]</PublishWizardCompleted>
     <BootstrapperEnabled>[options.BootstrapperEnabled]</BootstrapperEnabled>
     <MinimumVisualStudioVersion>[options.MinimumVisualStudioVersion]</MinimumVisualStudioVersion>
     <OldToolsVersion>[options.OldToolsVersion]</OldToolsVersion>
@@ -99,6 +110,8 @@ namespace Sharpmake.Generators.VisualStudio
     <BaseAddress>[options.BaseAddress]</BaseAddress>
     <OutputPath>[options.OutputDirectory]</OutputPath>
     <IntermediateOutputPath>[options.IntermediateDirectory]</IntermediateOutputPath>
+    <BaseIntermediateOutputPath>[options.BaseIntermediateOutputPath]</BaseIntermediateOutputPath>
+    <DocumentationFile>[options.DocumentationFile]</DocumentationFile>
     <DefineConstants>[options.PreprocessorDefinitions]</DefineConstants>
     <ErrorReport>[options.ErrorReport]</ErrorReport>
     <WarningLevel>[options.WarningLevel]</WarningLevel>
@@ -112,6 +125,8 @@ namespace Sharpmake.Generators.VisualStudio
     <StartWorkingDirectory>[options.StartWorkingDirectory]</StartWorkingDirectory>
     <CodeAnalysisRuleSet>[conf.CodeAnalysisRuleSetFilePath]</CodeAnalysisRuleSet>
     <LangVersion>[options.LanguageVersion]</LangVersion>
+    <CopyVsixExtensionFiles>[options.CopyVsixExtensionFiles]</CopyVsixExtensionFiles>
+    <CopyVsixExtensionLocation>[options.CopyVsixExtensionLocation]</CopyVsixExtensionLocation>
   </PropertyGroup>
 ";
 
@@ -119,7 +134,14 @@ namespace Sharpmake.Generators.VisualStudio
 @"  <Import Project=""[importProject]"" />
 ";
                 public static string ImportProjectItem =
-@"  <Import Project=""[importProject]"" Condition=""[importCondition]""/>
+@"  <Import Project=""[importProject]"" Condition=""[importCondition]"" />
+";
+
+                public static string VsixConfiguration =
+@"  <PropertyGroup>
+    <VSToolsPath Condition=""'$(VSToolsPath)' == ''"">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
+    <UseCodebase>true</UseCodebase>
+  </PropertyGroup>
 ";
 
                 public static string ProjectConfigurationsPreBuildEvent =
@@ -252,11 +274,11 @@ namespace Sharpmake.Generators.VisualStudio
 @"      <CachedDynamicPropName>[cachedDynamicPropName]</CachedDynamicPropName>";
 
             public static string CachedAppSettingsObjectName =
-                @"<CachedAppSettingsObjectName>[cachedAppSettingsObjectName]</CachedAppSettingsObjectName>
+@"      <CachedAppSettingsObjectName>[cachedAppSettingsObjectName]</CachedAppSettingsObjectName>
 ";
 
             public static string CachedSettingsPropName =
-@"<CachedSettingsPropName>[cachedSettingsPropName]</CachedSettingsPropName>
+@"      <CachedSettingsPropName>[cachedSettingsPropName]</CachedSettingsPropName>
 ";
 
 
@@ -361,7 +383,7 @@ namespace Sharpmake.Generators.VisualStudio
 ";
 
                 public static string WCFMetadata =
-@"    <WCFMetadata Include=""Service References\"" />
+@"    <WCFMetadata Include=""[baseStorage]"" />
 ";
 
                 public static string WCFMetadataStorage =
@@ -406,6 +428,23 @@ namespace Sharpmake.Generators.VisualStudio
       <Install>[install]</Install>
     </BootstrapperPackage>
 ";
+                public static string FileAssociationItem =
+                    @"    <FileAssociation Include=""[include]"">
+      <Visible>[visible]</Visible>
+      <Description>[description]</Description>
+      <Progid>[progid]</Progid>
+      <DefaultIcon>[defaultIcon]</DefaultIcon>
+    </FileAssociation>
+";
+                public static string PublishFile =
+                    @"    <PublishFile Include=""[include]"">
+      <Visible>[visible]</Visible>
+      <Group>[group]</Group>
+      <PublishState>[publishState]</PublishState>
+      <IncludeHash>[includeHash]</IncludeHash>
+      <FileType>[fileType]</FileType>
+    </PublishFile>
+";
 
                 public static string ProjectReferenceBegin =
 @"    <ProjectReference Include=""[include]"">
@@ -420,6 +459,9 @@ namespace Sharpmake.Generators.VisualStudio
 ";
                 public static string Private =
 @"      <Private>[private]</Private>
+";
+                public static string EmbedInteropTypes =
+@"      <EmbedInteropTypes>[embedInteropTypes]</EmbedInteropTypes>
 ";
                 public static string ReferenceOutputAssembly =
 @"      <ReferenceOutputAssembly>[ReferenceOutputAssembly]</ReferenceOutputAssembly>
@@ -464,7 +506,7 @@ namespace Sharpmake.Generators.VisualStudio
 ";
 
                 public static string VsdConfigXmlSimple =
-@"    <VsdConfigXmlFiles Include=""[include]""/>
+@"    <VsdConfigXmlFiles Include=""[include]"" />
 ";
 
                 public static string ResourceName =
@@ -476,7 +518,7 @@ namespace Sharpmake.Generators.VisualStudio
 ";
 
                 public static string ContentSimple =
-@"    <Content Include=""[include]""/>
+@"    <Content Include=""[include]"" />
 ";
 
                 public static string ContentBegin =
@@ -488,7 +530,7 @@ namespace Sharpmake.Generators.VisualStudio
 ";
 
                 public static string Analyzer =
-@"    <Analyzer Include=""[include]""/>
+@"    <Analyzer Include=""[include]"" />
 ";
 
                 public static string IncludeInVsix =
@@ -510,11 +552,18 @@ namespace Sharpmake.Generators.VisualStudio
             public static class UsingTaskElement
             {
                 public static string UsingTask =
-@"  <UsingTask AssemblyFile=""[usingTaskElement.AssemblyFile]"" TaskName=""[usingTaskElement.TaskName]"" />";
+@"  <UsingTask AssemblyFile=""[usingTaskElement.AssemblyFile]"" TaskName=""[usingTaskElement.TaskName]"" />
+";
             }
 
             public static class TargetElement
             {
+                public static string CustomTargetNoParameters =
+@"  <Target Name=""[targetElement.Name]"">
+    [targetElement.CustomTasks]
+  </Target>
+";
+
                 public static string CustomTarget =
 @"  <Target Name=""[targetElement.Name]"" [targetElement.TargetParameters]>
     [targetElement.CustomTasks]
@@ -594,8 +643,6 @@ namespace Sharpmake.Generators.VisualStudio
   </ProjectExtensions>
 ";
 
-            public const string PackageReference = "    <PackageReference Include=\"[packageName]\" Version=\"[packageVersion]\" />\n";
-
             public const string CustomPropertiesStart =
 @"  <PropertyGroup>
 ";
@@ -625,6 +672,9 @@ namespace Sharpmake.Generators.VisualStudio
     <StartURL>[conf.CsprojUserFile.StartURL]</StartURL>
     <StartArguments>[conf.CsprojUserFile.StartArguments]</StartArguments>
     <StartWorkingDirectory>[conf.CsprojUserFile.WorkingDirectory]</StartWorkingDirectory>";
+
+                public static readonly string DebugUnmanaged =
+@"    <EnableUnmanagedDebugging>[unmanagedDebugEnabled]</EnableUnmanagedDebugging>";
             }
         }
     }

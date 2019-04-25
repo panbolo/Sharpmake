@@ -19,7 +19,7 @@ using Microsoft.Win32;
 
 namespace Sharpmake.Generators.VisualStudio
 {
-    public partial class Pyproj
+    public partial class Pyproj : IProjectGenerator
     {
         internal class ItemGroups
         {
@@ -72,7 +72,7 @@ namespace Sharpmake.Generators.VisualStudio
             writer.Write(resolver.Resolve(value));
         }
 
-        public void Generate(Builder builder, PythonProject project, List<Project.Configuration> configurations, string projectFile, List<string> generatedFiles, List<string> skipFiles)
+        public void Generate(Builder builder, Project project, List<Project.Configuration> configurations, string projectFile, List<string> generatedFiles, List<string> skipFiles)
         {
             _builder = builder;
 
@@ -80,7 +80,11 @@ namespace Sharpmake.Generators.VisualStudio
             string projectPath = fileInfo.Directory.FullName;
             string projectFileName = fileInfo.Name;
             bool updated;
-            string projectFileResult = Generate(project, configurations, projectPath, projectFileName, out updated);
+
+            if (!(project is PythonProject))
+                throw new ArgumentException("Project is not a PythonProject");
+
+            string projectFileResult = Generate((PythonProject)project, configurations, projectPath, projectFileName, out updated);
             if (updated)
                 generatedFiles.Add(projectFileResult);
             else
@@ -138,6 +142,21 @@ namespace Sharpmake.Generators.VisualStudio
                     }
                 }
 
+                foreach (PythonVirtualEnvironment virtualEnvironment in _project.VirtualEnvironments)
+                {
+                    if (virtualEnvironment.IsDefault)
+                    {
+                        string baseInterpreterRegisterKeyName = string.Format(@"HKEY_CURRENT_USER\Software\Microsoft\VisualStudio\{0}\PythonTools\Interpreters\{{{1}}}",
+                            devEnvRange.MinDevEnv.GetVisualVersionString(), virtualEnvironment.BaseInterpreterGuid.ToString());
+                        string baseInterpreterDescription = (string)Registry.GetValue(baseInterpreterRegisterKeyName, "Description", "");
+                        if (baseInterpreterDescription != string.Empty)
+                        {
+                            currentInterpreterId = string.Format("{{{0}}}", virtualEnvironment.Guid.ToString());
+                            currentInterpreterVersion = (string)Registry.GetValue(baseInterpreterRegisterKeyName, "Version", currentInterpreterVersion);
+                        }
+                    }
+                }
+
                 using (resolver.NewScopedParameter("interpreterId", currentInterpreterId))
                 using (resolver.NewScopedParameter("interpreterVersion", currentInterpreterVersion))
                 {
@@ -150,9 +169,9 @@ namespace Sharpmake.Generators.VisualStudio
                 {
                     Write(Template.Project.ProjectItemGroupBegin, writer, resolver);
                     using (resolver.NewScopedParameter("name", virtualEnvironment.Name))
-                    using (resolver.NewScopedParameter("version", defaultInterpreterVersion))
+                    using (resolver.NewScopedParameter("version", currentInterpreterVersion))
                     using (resolver.NewScopedParameter("basePath", virtualEnvironment.Path))
-                    using (resolver.NewScopedParameter("baseGuid", defaultInterpreter))
+                    using (resolver.NewScopedParameter("baseGuid", virtualEnvironment.BaseInterpreterGuid))
                     using (resolver.NewScopedParameter("guid", virtualEnvironment.Guid))
                     {
                         Write(Template.Project.VirtualEnvironmentInterpreter, writer, resolver);
@@ -180,7 +199,7 @@ namespace Sharpmake.Generators.VisualStudio
                         }
                     }
                 }
-                else // Set the default interpreter
+                else if (_project.VirtualEnvironments.Count == 0) // Set the default interpreter
                 {
                     using (resolver.NewScopedParameter("guid", currentInterpreterId))
                     using (resolver.NewScopedParameter("version", currentInterpreterVersion))

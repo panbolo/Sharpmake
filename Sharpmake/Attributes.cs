@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 using System;
+using JetBrains.Annotations;
 
 namespace Sharpmake
 {
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
-    public class Main : Attribute
+    public class EntryPoint : Attribute
+    { }
+
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
+    public class Main : EntryPoint
     { }
 
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
@@ -33,6 +38,7 @@ namespace Sharpmake
     public class Export : Attribute
     { }
 
+    [MeansImplicitUse]
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
     public class Configure : Attribute
     {
@@ -93,20 +99,43 @@ namespace Sharpmake
     }
 
 
-    [System.AttributeUsage(AttributeTargets.Enum)]
+    [AttributeUsage(AttributeTargets.Enum)]
     public class Fragment : Attribute
     {
     }
 
-    [System.AttributeUsage(AttributeTargets.Enum)]
+    /// <summary>
+    /// Marks elements of fragments that should not be considered individual fragments.
+    /// </summary>
+    /// <remarks>
+    /// When an enumeration is marked with <see cref="Fragment"/>, Sharpmake normally ensure that
+    /// each element sets 1 and only 1 bit. However, it is often useful in a bit enum to combine
+    /// multiple bits together to create sets that go well together. To prevent Sharpmake from
+    /// considering those errors, you must decorate these enum members with
+    /// <see cref="CompositeFragmentAttribute"/>.
+    /// </remarks>
+    [AttributeUsage(AttributeTargets.Field)]
+    public class CompositeFragmentAttribute : Attribute
+    {
+    }
+
+    [AttributeUsage(AttributeTargets.Enum)]
     public class TolerateDoubleAttribute : Attribute
     {
     }
+
+    public enum IncludeType
+    {
+        Relative,                   // Default, search the included file from the directory of the file doing the inclusion
+        FarthestMatchInParentPath,  // Search the included file from the directory of the file doing the inclusion and go back in directory structure until a match is found, use the farthest match
+        NearestMatchInParentPath,   // Search the included file from the directory of the file doing the inclusion and go back in directory structure until a match is found, use the nearest match
+    };
 
     [System.AttributeUsage(AttributeTargets.Module, AllowMultiple = true)]
     public class Include : Attribute
     {
         public Include(string fileName) { }
+        public Include(string fileName, IncludeType type) { }
     }
 
     [System.AttributeUsage(AttributeTargets.Module, AllowMultiple = true)]
@@ -116,6 +145,26 @@ namespace Sharpmake
         public Reference(string fileName)
         {
             FileName = fileName;
+        }
+    }
+
+    [System.AttributeUsage(AttributeTargets.Module, AllowMultiple = true)]
+    public class Package : Attribute
+    {
+        public string FileName { get; }
+        public Package(string fileName)
+        {
+            FileName = fileName;
+        }
+    }
+
+    [System.AttributeUsage(AttributeTargets.Module, AllowMultiple = false)]
+    public class DebugProjectName : Attribute
+    {
+        public string Name { get; }
+        public DebugProjectName(string name)
+        {
+            Name = name;
         }
     }
 }

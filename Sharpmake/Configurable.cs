@@ -45,7 +45,7 @@ namespace Sharpmake
 
         public override string ToString()
         {
-            return Owner.GetType().Name + ":" + Target;
+            return Owner.GetType().ToNiceTypeName() + ":" + Target;
         }
     }
 
@@ -57,6 +57,9 @@ namespace Sharpmake
         public IReadOnlyList<TConfiguration> Configurations => _configurations;
 
         private readonly List<TConfiguration> _configurations = new List<TConfiguration>();
+
+        // Type of Configuration object, must derive from TConfiguration
+        public Type ConfigurationType { get; internal protected set; }
 
         public void AddTargets(params ITarget[] targetsMask)
         {
@@ -214,7 +217,7 @@ namespace Sharpmake
                 }
                 usedTargetNames.Add(targetString, target);
 
-                TConfiguration conf = new TConfiguration();
+                TConfiguration conf = Activator.CreateInstance(ConfigurationType) as TConfiguration;
                 conf.Construct(this, target);
                 _configurations.Add(conf);
                 var param = new object[] { conf, target };

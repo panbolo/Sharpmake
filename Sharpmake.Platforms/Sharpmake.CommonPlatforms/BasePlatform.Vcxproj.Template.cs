@@ -27,6 +27,7 @@ namespace Sharpmake
       <CompileAsManaged>[clrSupport]</CompileAsManaged>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <TreatWarningAsError>[options.TreatWarningAsError]</TreatWarningAsError>
+      <DiagnosticsFormat>[options.DiagnosticsFormat]</DiagnosticsFormat>
       <MultiProcessorCompilation>[options.MultiProcessorCompilation]</MultiProcessorCompilation>
       <UseUnicodeForAssemblerListing>false</UseUnicodeForAssemblerListing>
       <InlineFunctionExpansion>[options.InlineFunctionExpansion]</InlineFunctionExpansion>
@@ -38,8 +39,8 @@ namespace Sharpmake
       <UndefineAllPreprocessorDefinitions>false</UndefineAllPreprocessorDefinitions>
       <IgnoreStandardIncludePath>[options.IgnoreStandardIncludePath]</IgnoreStandardIncludePath>
       <PreprocessToFile>[options.GeneratePreprocessedFile]</PreprocessToFile>
-      <PreprocessSuppressLineNumbers>[options.KeepComments]</PreprocessSuppressLineNumbers>
-      <PreprocessKeepComments>false</PreprocessKeepComments>
+      <PreprocessSuppressLineNumbers>[options.PreprocessSuppressLineNumbers]</PreprocessSuppressLineNumbers>
+      <PreprocessKeepComments>[options.KeepComments]</PreprocessKeepComments>
       <StringPooling>[options.StringPooling]</StringPooling>
       <MinimalRebuild>[options.MinimalRebuild]</MinimalRebuild>
       <ExceptionHandling>[options.ExceptionHandling]</ExceptionHandling>
@@ -55,19 +56,19 @@ namespace Sharpmake
       <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <DisableLanguageExtensions>[options.DisableLanguageExtensions]</DisableLanguageExtensions>
       <TreatWChar_tAsBuiltInType>[options.TreatWChar_tAsBuiltInType]</TreatWChar_tAsBuiltInType>
+      <RemoveUnreferencedCodeData>[options.RemoveUnreferencedCodeData]</RemoveUnreferencedCodeData>
       <ForceConformanceInForLoopScope>[options.ForceConformanceInForLoopScope]</ForceConformanceInForLoopScope>
       <RuntimeTypeInfo>[options.RuntimeTypeInfo]</RuntimeTypeInfo>
       <OpenMPSupport>[options.OpenMP]</OpenMPSupport>
+      <LanguageStandard>[options.LanguageStandard]</LanguageStandard>
       <ExpandAttributedSource>false</ExpandAttributedSource>
       <AssemblerOutput>NoListing</AssemblerOutput>
       <GenerateXMLDocumentationFiles>[options.GenerateXMLDocumentation]</GenerateXMLDocumentationFiles>
       <BrowseInformation>false</BrowseInformation>
       <CallingConvention>[options.CallingConvention]</CallingConvention>
       <CompileAs>Default</CompileAs>
-      <DisableSpecificWarnings>[options.DisableSpecificWarnings]
-      </DisableSpecificWarnings>
-      <UndefinePreprocessorDefinitions>[options.UndefinePreprocessorDefinitions]
-      </UndefinePreprocessorDefinitions>
+      <DisableSpecificWarnings>[options.DisableSpecificWarnings]</DisableSpecificWarnings>
+      <UndefinePreprocessorDefinitions>[options.UndefinePreprocessorDefinitions]</UndefinePreprocessorDefinitions>
       <AdditionalOptions>[options.AdditionalCompilerOptions]</AdditionalOptions>
       <PrecompiledHeaderFile>[options.PrecompiledHeaderThrough]</PrecompiledHeaderFile>
       <PrecompiledHeaderOutputFile>[options.PrecompiledHeaderFile]</PrecompiledHeaderOutputFile>
@@ -75,6 +76,7 @@ namespace Sharpmake
       <RuntimeLibrary>[options.RuntimeLibrary]</RuntimeLibrary>
       <ShowIncludes>[options.ShowIncludes]</ShowIncludes>
       <ForcedIncludeFiles>[options.ForcedIncludeFiles]</ForcedIncludeFiles>
+      <ForcedUsingFiles>[options.ForcedUsingFiles]</ForcedUsingFiles>
     </ClCompile>
 ";
 
@@ -120,7 +122,7 @@ namespace Sharpmake
       <HeapCommitSize>[options.HeapCommitSize]</HeapCommitSize>
       <StackReserveSize>[options.StackReserveSize]</StackReserveSize>
       <StackCommitSize>[options.StackCommitSize]</StackCommitSize>
-      <LargeAddressAware>true</LargeAddressAware>
+      <LargeAddressAware>[options.LargeAddressAware]</LargeAddressAware>
       <MapFileName>[options.MapFileName]</MapFileName>
       <ImportLibrary>[options.ImportLibrary]</ImportLibrary>
       <FunctionOrder>[options.FunctionOrder]</FunctionOrder>
@@ -128,6 +130,7 @@ namespace Sharpmake
       <DelayLoadDLLs>[options.DelayLoadedDLLs]</DelayLoadDLLs>
       <BaseAddress>[options.BaseAddress]</BaseAddress>
       <UACExecutionLevel>[options.UACExecutionLevel]</UACExecutionLevel>
+      <AllowIsolation>[options.AllowIsolation]</AllowIsolation>
     </Link>
 ";
 
@@ -166,8 +169,8 @@ namespace Sharpmake
             @"  <PropertyGroup Condition=""'$(Configuration)|$(Platform)'=='[conf.Name]|[platformName]'"" Label=""Configuration"">
     <ConfigurationType>[options.ConfigurationType]</ConfigurationType>
     <UseDebugLibraries>[options.UseDebugLibraries]</UseDebugLibraries>
-    <_IsNativeEnvironment>[options.NativeEnvironmentVS2012]</_IsNativeEnvironment>
-    <UseNativeEnvironment>[options.NativeEnvironmentVS2013]</UseNativeEnvironment>
+    <PreferredToolArchitecture>[options.PreferredToolArchitecture]</PreferredToolArchitecture>
+    <_IsNativeEnvironment>[options._IsNativeEnvironment]</_IsNativeEnvironment>
     <CharacterSet>[options.CharacterSet]</CharacterSet>
     <UseOfMfc>[options.UseOfMfc]</UseOfMfc>
     <CLRSupport>[clrSupport]</CLRSupport>
@@ -201,6 +204,9 @@ namespace Sharpmake
     <LibraryPath>[options.LibraryPath]</LibraryPath>
     <ExcludePath>[options.ExcludePath]</ExcludePath>
     <DisableFastUpToDateCheck>[options.DisableFastUpToDateCheck]</DisableFastUpToDateCheck>
+    <EnableManagedIncrementalBuild>[options.EnableManagedIncrementalBuild]</EnableManagedIncrementalBuild>
+    <UseClangCl>[options.UseClangCl]</UseClangCl>
+    <UseLldLink>[options.UseLldLink]</UseLldLink>
   </PropertyGroup>
 ";
 
@@ -236,6 +242,19 @@ del ""[options.OutputDirectory]\[conf.TargetFileFullName].pdb"" >NUL 2>NUL</NMak
     <NMakePreprocessorDefinitions>[options.PreprocessorDefinitions]</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>[options.AdditionalIncludeDirectories]</NMakeIncludeSearchPath>
     <TargetFileName>[options.OutputFileName].exe</TargetFileName>
+  </PropertyGroup>
+";
+
+        private const string _projectConfigurationsCustomMakefile =
+            @"  <PropertyGroup Condition=""'$(Configuration)|$(Platform)'=='[conf.Name]|[platformName]'"">
+    <OutDir>[options.OutputDirectory]\</OutDir>
+    <IntDir>[options.IntermediateDirectory]\</IntDir>
+    <NMakeBuildCommandLine>[conf.CustomBuildSettings.BuildCommand]</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>[conf.CustomBuildSettings.RebuildCommand]</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>[conf.CustomBuildSettings.CleanCommand]</NMakeCleanCommandLine>
+    <NMakeOutput>[conf.CustomBuildSettings.OutputFile]</NMakeOutput>
+    <NMakePreprocessorDefinitions>[options.PreprocessorDefinitions]</NMakePreprocessorDefinitions>
+    <NMakeIncludeSearchPath>[options.AdditionalIncludeDirectories]</NMakeIncludeSearchPath>
   </PropertyGroup>
 ";
     }

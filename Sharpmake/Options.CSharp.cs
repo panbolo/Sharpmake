@@ -62,6 +62,13 @@ namespace Sharpmake
                 Disabled
             }
 
+            public enum CopyVsixExtensionFiles
+            {
+                Enabled,
+                [Default]
+                Disabled
+            }
+
             public enum GeneratePkgDefFile
             {
                 [Default]
@@ -141,8 +148,8 @@ namespace Sharpmake
 
             public enum UpdatePeriodically
             {
-                Enabled,
                 [Default]
+                Enabled,
                 Disabled
             }
 
@@ -179,7 +186,8 @@ namespace Sharpmake
             public class UpdateInterval : IntOption
             {
                 public UpdateInterval(int interval)
-                    : base(interval) { }
+                    : base(interval)
+                { }
             }
 
             public class ApplicationRevision : StringOption
@@ -228,6 +236,16 @@ namespace Sharpmake
                 public PublishURL(string url) : base(url) { }
             }
 
+            public class ManifestKeyFile : StringOption
+            {
+                public ManifestKeyFile(string url) : base(url) { }
+            }
+
+            public class ManifestCertificateThumbprint : StringOption
+            {
+                public ManifestCertificateThumbprint(string url) : base(url) { }
+            }
+
             public class InstallURL : StringOption
             {
                 public InstallURL(string url) : base(url) { }
@@ -263,9 +281,32 @@ namespace Sharpmake
                 public MinimumRequiredVersion(string url) : base(url) { }
             }
 
+            /// <summary>
+            /// Suppressed specific warnings in a C# project.
+            /// </summary>
+            /// <remarks>
+            /// This option generates a `NoWarn` element in the C# project XML.
+            /// </remarks>
             public class SuppressWarning : StringOption
             {
                 public SuppressWarning(params int[] warnings) : base(string.Join(",", warnings.Select(w => w.ToString()))) { }
+
+                /// <summary>
+                /// Creates a new <see cref="SuppressWarning"/> instance from a list of warning
+                /// code labels.
+                /// </summary>
+                /// <param name="warnings">The list of warning code labels to suppress. See remarks.</param>
+                /// <remarks>
+                /// If <paramref name="warnings"/> contains elements that are not C# compiler
+                /// warnings, those warning numbers *must* include the 2-letter prefix. For
+                /// example, NuGet warnings must be prefixed by `NU`. (ie: `NU1603`)
+                /// </remarks>
+                public SuppressWarning(params string[] warnings) : base(string.Join(",", warnings)) { }
+            }
+
+            public class CopyVsixExtensionLocation : StringOption
+            {
+                public CopyVsixExtensionLocation(string location) : base(location) { }
             }
 
             public enum MapFileExtensions
@@ -293,6 +334,13 @@ namespace Sharpmake
             {
                 [Default]
                 Enabled,
+                Disabled
+            }
+
+            public enum CreateWebPageOnPublish
+            {
+                Enabled,
+                [Default]
                 Disabled
             }
 
@@ -384,6 +432,27 @@ namespace Sharpmake
             {
                 Enabled,
                 [Default]
+                Disabled
+            }
+
+            public enum UseVSHostingProcess
+            {
+                [Default]
+                Enabled,
+                Disabled
+            }
+
+            public enum GenerateManifests
+            {
+                Enabled,
+                [Default]
+                Disabled
+            }
+
+            public enum SignManifests
+            {
+                [Default]
+                Enabled,
                 Disabled
             }
 

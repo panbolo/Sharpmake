@@ -25,9 +25,16 @@ namespace Sharpmake
     <DurangoXdkTasks>[durangoXdkTasks]</DurangoXdkTasks>
     <TargetPlatformIdentifier>[targetPlatformIdentifier]</TargetPlatformIdentifier>
     <TargetPlatformSdkPath>[targetPlatformSdkPath]</TargetPlatformSdkPath>
+    <XdkEditionRootVS2012>[xdkEditionRootVS2012]</XdkEditionRootVS2012>
     <XdkEditionRootVS2015>[xdkEditionRootVS2015]</XdkEditionRootVS2015>
+    <XdkEditionRootVS2017>[xdkEditionRootVS2017]</XdkEditionRootVS2017>
+    <EnableLegacyXdkHeaders>[enableLegacyXdkHeaders]</EnableLegacyXdkHeaders>
     <GameOSFilePath>[gameOSFilePath]</GameOSFilePath>
     <SDKReferenceDirectoryRoot>[sdkReferenceDirectoryRoot]</SDKReferenceDirectoryRoot>
+";
+
+            private const string _applicationEnvironment =
+@"    <ApplicationEnvironment>title</ApplicationEnvironment>
 ";
 
             private const string _projectConfigurationsCompileTemplate =
@@ -36,7 +43,7 @@ namespace Sharpmake
       <CompileAsWinRT>[options.CompileAsWinRT]</CompileAsWinRT>
       <WarningLevel>[options.WarningLevel]</WarningLevel>
       <Optimization>[options.Optimization]</Optimization>
-      <PreprocessorDefinitions>[options.PreprocessorDefinitions];$(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>[options.PreprocessorDefinitions];%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>[options.AdditionalIncludeDirectories]</AdditionalIncludeDirectories>
       <AdditionalUsingDirectories>$(Console_SdkPackagesRoot);$(Console_SdkWindowsMetadataPath);%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
       <DebugInformationFormat>[options.DebugInformationFormat]</DebugInformationFormat>
@@ -71,6 +78,7 @@ namespace Sharpmake
       <CreateHotpatchableImage>false</CreateHotpatchableImage>
       <DisableLanguageExtensions>[options.DisableLanguageExtensions]</DisableLanguageExtensions>
       <TreatWChar_tAsBuiltInType>[options.TreatWChar_tAsBuiltInType]</TreatWChar_tAsBuiltInType>
+      <RemoveUnreferencedCodeData>[options.RemoveUnreferencedCodeData]</RemoveUnreferencedCodeData>
       <ForceConformanceInForLoopScope>[options.ForceConformanceInForLoopScope]</ForceConformanceInForLoopScope>
       <RuntimeTypeInfo>[options.RuntimeTypeInfo]</RuntimeTypeInfo>
       <OpenMPSupport>[options.OpenMP]</OpenMPSupport>
@@ -177,6 +185,7 @@ namespace Sharpmake
     <LayoutDir>[options.LayoutDir]</LayoutDir>
     <PullMappingFile>[options.PullMappingFile]</PullMappingFile>
     <DeployMode>[options.DeployMode]</DeployMode>
+    <NetworkSharePath>[options.NetworkSharePath]</NetworkSharePath>
     <PullTemporaryFolder>[options.PullTemporaryFolder]</PullTemporaryFolder>
     <LayoutExtensionFilter>[options.LayoutExtensionFilter]</LayoutExtensionFilter>
   </PropertyGroup>
@@ -190,6 +199,7 @@ namespace Sharpmake
         <LayoutDir>[options.LayoutDir]</LayoutDir>
         <PullMappingFile>[options.PullMappingFile]</PullMappingFile>
         <DeployMode>[options.DeployMode]</DeployMode>
+        <NetworkSharePath>[options.NetworkSharePath]</NetworkSharePath>
         <LayoutExtensionFilter>[options.LayoutExtensionFilter]</LayoutExtensionFilter>
   </PropertyGroup>
       <PropertyGroup>

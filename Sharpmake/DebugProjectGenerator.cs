@@ -1,11 +1,11 @@
 ﻿// Copyright (c) 2017 Ubisoft Entertainment
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -45,11 +45,15 @@ namespace Sharpmake
 
         internal class ProjectContent
         {
+            public string DisplayName;
+
             public string ProjectFolder;
             public readonly HashSet<string> ProjectFiles = new HashSet<string>();
 
             public readonly List<string> References = new List<string>();
             public readonly List<Type> ProjectReferences = new List<Type>();
+
+            public bool IsSetupProject;
         }
         internal static readonly Dictionary<Type, ProjectContent> DebugProjects = new Dictionary<Type, ProjectContent>();
 
@@ -59,33 +63,69 @@ namespace Sharpmake
             RootPath = Path.GetDirectoryName(sourcesArguments[0]);
 
             Assembler assembler = new Assembler();
-            List<string> allsources = assembler.GetSourceFiles(MainSources);
+            assembler.AttributeParsers.Add(new DebugProjectNameAttributeParser());
+            IAssemblyInfo assemblyInfo = assembler.LoadUncompiledAssemblyInfo(Builder.Instance.CreateContext(BuilderCompileErrorBehavior.ReturnNullAssembly), MainSources);
 
-            var references = new HashSet<string>();
-            foreach (var assemblerRef in assembler.References)
-                references.Add(assemblerRef);
+            GenerateDebugProject(assemblyInfo, true, new Dictionary<string, Type>());
+        }
 
-            // find all folders and create associated projects types
-            foreach (var source in allsources)
+        private static Type GenerateDebugProject(IAssemblyInfo assemblyInfo, bool isSetupProject, IDictionary<string, Type> visited)
+        {
+            string displayName = assemblyInfo.DebugProjectName;
+            if (string.IsNullOrEmpty(displayName))
+                displayName = isSetupProject ? "sharpmake_debug" : $"sharpmake_package_{assemblyInfo.Id.GetHashCode():X8}";
+
+            Type generatedProject;
+            if (visited.TryGetValue(assemblyInfo.Id, out generatedProject))
             {
-                string dir = Path.GetDirectoryName(source)?.ToLower();
-
-                var existing = DebugProjects.FirstOrDefault(dp => dir.Contains(dp.Value.ProjectFolder));
-                if (existing.Equals(default(KeyValuePair<Type, ProjectContent>)))
-                {
-                    string projectName = Path.GetFileName(dir) + "_sharpmake";
-                    Type myProjectType = CreateProject(projectName);
-
-                    ProjectContent project = new ProjectContent { ProjectFolder = dir };
-                    project.References.AddRange(references);
-                    foreach (var p in DebugProjects)
-                        p.Value.ProjectReferences.Add(myProjectType);
-                    DebugProjects.Add(myProjectType, project);
-                    existing = DebugProjects.Last();
-                }
-
-                existing.Value.ProjectFiles.Add(source);
+                if (generatedProject == null)
+                    throw new Error($"Circular sharpmake package dependency on {displayName}");
+                return generatedProject;
             }
+
+            visited[assemblyInfo.Id] = null;
+
+            ProjectContent project = new ProjectContent
+            {
+                ProjectFolder = RootPath,
+                IsSetupProject = isSetupProject,
+                DisplayName = displayName
+            };
+            generatedProject = CreateProject(displayName);
+            DebugProjects.Add(generatedProject, project);
+
+            // Add sources
+            foreach (var source in assemblyInfo.SourceFiles)
+            {
+                project.ProjectFiles.Add(source);
+            }
+
+            // Add references
+            var references = new HashSet<string>();
+            if (assemblyInfo.UseDefaultReferences)
+            {
+                foreach (string defaultReference in Assembler.DefaultReferences)
+                    references.Add(Assembler.GetAssemblyDllPath(defaultReference));
+            }
+
+            foreach (var assemblerRef in assemblyInfo.References)
+            {
+                if (!assemblyInfo.SourceReferences.ContainsKey(assemblerRef))
+                {
+                    references.Add(assemblerRef);
+                }
+            }
+
+            project.References.AddRange(references);
+
+            foreach (var refInfo in assemblyInfo.SourceReferences.Values)
+            {
+                project.ProjectReferences.Add(GenerateDebugProject(refInfo, false, visited));
+            }
+
+            visited[assemblyInfo.Id] = generatedProject;
+
+            return generatedProject;
         }
 
         private static Type CreateProject(string typeSignature)
@@ -111,8 +151,15 @@ namespace Sharpmake
 
         internal static Target GetTargets()
         {
-            return new Target(Platform.anycpu, DevEnv.vs2015 | DevEnv.vs2017, Optimization.Debug,
-                OutputType.Dll, Blob.NoBlob, BuildSystem.MSBuild, DotNetFramework.v4_5);
+            return new Target(
+                Platform.anycpu,
+                DevEnv.vs2015 | DevEnv.vs2017,
+                Optimization.Debug,
+                OutputType.Dll,
+                Blob.NoBlob,
+                BuildSystem.MSBuild,
+                DotNetFramework.v4_6_1
+            );
         }
 
         private static string s_sharpmakePackageName;
@@ -121,7 +168,7 @@ namespace Sharpmake
         private static string s_sharpmakeGeneratorDllPath;
         private static string s_sharpmakeApplicationExePath;
         private static bool s_useLocalSharpmake = false;
-        private static readonly Regex s_assemblyVersionRegex = new Regex(@"(.*) \((.*)\)", RegexOptions.Compiled);
+        private static readonly Regex s_assemblyVersionRegex = new Regex(@"([^\s]+)(?:\s*\((.+)\))?", RegexOptions.Compiled);
 
         /// <summary>
         /// Add references to Sharpmake to given configuration.
@@ -141,7 +188,9 @@ namespace Sharpmake
 
                 s_sharpmakePackageVersion = match.Groups[1].Value;
                 string assemblyProductVariation = match.Groups[2].Value;
-                s_sharpmakePackageName = $"{assemblyProductName}-{assemblyProductVariation}";
+                s_sharpmakePackageName = $"{assemblyProductName}";
+                if (!string.IsNullOrWhiteSpace(assemblyProductVariation))
+                    s_sharpmakePackageName += $"-{assemblyProductVariation}";
 
                 if (assemblyProductVariation == "LocalBuild")
                 {
@@ -153,7 +202,16 @@ namespace Sharpmake
                 }
 
                 s_sharpmakeApplicationExePath = Process.GetCurrentProcess().MainModule.FileName;
+
+                if (Util.IsRunningInMono())
+                {
+                    // When running within Mono, s_sharpmakeApplicationExePath will at this point wrongly refer to the
+                    // mono (or mono-sgen) executable. Fix it so that it points to Sharpmake.Application.exe.
+                    s_sharpmakeApplicationExePath = $"{AppDomain.CurrentDomain.BaseDirectory}{AppDomain.CurrentDomain.FriendlyName}";
+                }
             }
+
+            conf.ReferencesByPath.Add(Assembler.DefaultReferences);
 
             if (s_useLocalSharpmake)
             {
@@ -172,7 +230,8 @@ namespace Sharpmake
         {
             conf.CsprojUserFile = new Project.Configuration.CsprojUserFileSettings();
             conf.CsprojUserFile.StartAction = Project.Configuration.CsprojUserFileSettings.StartActionSetting.Program;
-            conf.CsprojUserFile.StartArguments = $@"/sources(@""{string.Join(";", MainSources)}"")";
+            string quote = Util.IsRunningInMono() ? @"\""" : @""""; // When running in Mono, we must escape "
+            conf.CsprojUserFile.StartArguments = $@"/sources(@{quote}{string.Join(";", MainSources)}{quote})";
             conf.CsprojUserFile.StartProgram = s_sharpmakeApplicationExePath;
         }
     }
@@ -202,15 +261,19 @@ namespace Sharpmake
     [Sharpmake.Generate]
     public class DebugProject : CSharpProject
     {
+        private readonly DebugProjectGenerator.ProjectContent _projectInfo;
+
         public DebugProject()
-            : base(typeof(Target))
+            : base(typeof(Target), typeof(Configuration), isInternal: true)
         {
+            _projectInfo = DebugProjectGenerator.DebugProjects[GetType()];
+
             // set paths
-            RootPath = DebugProjectGenerator.DebugProjects[GetType()].ProjectFolder;
+            RootPath = _projectInfo.ProjectFolder;
             SourceRootPath = RootPath;
 
             // add selected source files
-            SourceFiles.AddRange(DebugProjectGenerator.DebugProjects[GetType()].ProjectFiles);
+            SourceFiles.AddRange(_projectInfo.ProjectFiles);
 
             // ensure that no file will be automagically added
             SourceFilesExtensions.Clear();
@@ -218,6 +281,9 @@ namespace Sharpmake
             PRIFilesExtensions.Clear();
             ResourceFiles.Clear();
             NoneExtensions.Clear();
+            VsctExtension.Clear();
+
+            Name = _projectInfo.DisplayName;
 
             AddTargets(DebugProjectGenerator.GetTargets());
         }
@@ -231,15 +297,20 @@ namespace Sharpmake
 
             DebugProjectGenerator.AddSharpmakePackage(conf);
 
-            conf.ReferencesByPath.AddRange(DebugProjectGenerator.DebugProjects[GetType()].References);
-            foreach (var projectReference in DebugProjectGenerator.DebugProjects[GetType()].ProjectReferences)
+            conf.Options.Add(Options.CSharp.LanguageVersion.CSharp5);
+
+            conf.ReferencesByPath.AddRange(_projectInfo.References);
+            foreach (var projectReference in _projectInfo.ProjectReferences)
             {
                 conf.AddPrivateDependency(target, projectReference);
             }
 
             // set up custom configuration only to setup project
-            if (string.CompareOrdinal(conf.ProjectPath.ToLower(), RootPath.ToLower()) == 0)
+            if (string.CompareOrdinal(conf.ProjectPath.ToLower(), RootPath.ToLower()) == 0
+                && _projectInfo.IsSetupProject)
+            {
                 conf.SetupProjectOptions();
+            }
         }
     }
 
@@ -250,6 +321,7 @@ namespace Sharpmake
         public AssemblyVersionException(string msg) : base(msg) { }
 
         protected AssemblyVersionException(SerializationInfo info, StreamingContext context)
-            : base(info, context) { }
+            : base(info, context)
+        { }
     }
 }

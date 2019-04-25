@@ -13,6 +13,7 @@
 // limitations under the License.
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Sharpmake.Generators;
 using Sharpmake.Generators.FastBuild;
 using Sharpmake.Generators.VisualStudio;
@@ -48,15 +49,34 @@ namespace Sharpmake
         protected const string RemoveLineTag = FileGeneratorUtilities.RemoveLineTag;
 
         public virtual string BffPlatformDefine => null;
-        public virtual string CConfigName => string.Empty;
-        public virtual string CppConfigName => CConfigName;
+
+        public virtual string CConfigName(Configuration conf)
+        {
+            return string.Empty;
+        }
+
+        public virtual string CppConfigName(Configuration conf)
+        {
+            return string.Empty;
+        }
 
         public virtual bool AddLibPrefix(Configuration conf)
         {
             return false;
         }
 
+        [Obsolete("Use " + nameof(SetupExtraLinkerSettings) + " and pass the conf")]
         public virtual void SetupExtraLinkerSettings(IFileGenerator fileGenerator, Project.Configuration.OutputType outputType, string fastBuildOutputFile)
+        {
+            SetupExtraLinkerSettings(fileGenerator, outputType);
+        }
+
+        public virtual void SetupExtraLinkerSettings(IFileGenerator fileGenerator, Project.Configuration configuration, string fastBuildOutputFile)
+        {
+            SetupExtraLinkerSettings(fileGenerator, configuration.Output);
+        }
+
+        private void SetupExtraLinkerSettings(IFileGenerator fileGenerator, Project.Configuration.OutputType outputType)
         {
             using (fileGenerator.Resolver.NewScopedParameter("dllOption", outputType == Project.Configuration.OutputType.Dll ? " /DLL" : ""))
             {
@@ -64,16 +84,14 @@ namespace Sharpmake
             }
         }
 
-        public virtual void AddCompilerSettings(IDictionary<string, CompilerSettings> masterCompilerSettings, string compilerName, string rootPath, DevEnv devEnv, string projectRootPath)
+        public virtual IEnumerable<Project.Configuration.BuildStepBase> GetExtraPostBuildEvents(Project.Configuration configuration, string fastBuildOutputFile)
         {
+            return Enumerable.Empty<Project.Configuration.BuildStepBase>();
         }
 
-        public virtual CompilerSettings GetMasterCompilerSettings(IDictionary<string, CompilerSettings> masterCompilerSettings, string compilerName, string rootPath, DevEnv devEnv, string projectRootPath, bool useCCompiler)
-        {
-            throw new NotImplementedException();
-        }
+        public virtual string GetOutputFilename(Project.Configuration.OutputType outputType, string fastBuildOutputFile) => fastBuildOutputFile;
 
-        public virtual void SetConfiguration(IDictionary<string, CompilerSettings.Configuration> configurations, string compilerName, string projectRootPath, DevEnv devEnv, bool useCCompiler)
+        public virtual void AddCompilerSettings(IDictionary<string, CompilerSettings> masterCompilerSettings, Project.Configuration conf)
         {
         }
         #endregion
@@ -103,11 +121,6 @@ namespace Sharpmake
             yield break;
         }
 
-        public virtual IEnumerable<string> GetPlatformLibraryPaths(IGenerationContext context)
-        {
-            yield break;
-        }
-
         public virtual IEnumerable<string> GetLibraryFiles(IGenerationContext context)
         {
             yield break;
@@ -120,12 +133,22 @@ namespace Sharpmake
 
         public IEnumerable<string> GetIncludePaths(IGenerationContext context)
         {
-            return MakePathsRelative(context, GetIncludePathsImpl);
+            return GetIncludePathsImpl(context);
         }
 
         public IEnumerable<string> GetPlatformIncludePaths(IGenerationContext context)
         {
-            return GetPlatformIncludePathsImpl(context);
+            return GetPlatformIncludePathsWithPrefixImpl(context).Select(x => x.Path);
+        }
+
+        public IEnumerable<IncludeWithPrefix> GetPlatformIncludePathsWithPrefix(IGenerationContext context)
+        {
+            return GetPlatformIncludePathsWithPrefixImpl(context);
+        }
+
+        public IEnumerable<string> GetResourceIncludePaths(IGenerationContext context)
+        {
+            return GetResourceIncludePathsImpl(context);
         }
 
         public virtual IEnumerable<string> GetCxUsingPath(IGenerationContext context)
@@ -229,6 +252,10 @@ namespace Sharpmake
         {
             generator.Write(_projectConfigurationsFastBuildMakefile);
         }
+        public virtual void GenerateProjectConfigurationCustomMakeFile(IVcxprojGenerationContext context, IFileGenerator generator)
+        {
+            generator.Write(_projectConfigurationsCustomMakefile);
+        }
 
         public virtual void GenerateProjectPlatformImportSheet(IVcxprojGenerationContext context, IFileGenerator generator)
         {
@@ -249,7 +276,7 @@ namespace Sharpmake
         public virtual void SetupPlatformLibraryOptions(ref string platformLibExtension, ref string platformOutputLibExtension, ref string platformPrefixExtension)
         {
             platformLibExtension = ".lib";
-            platformOutputLibExtension = ".lib";
+            platformOutputLibExtension = "";
             platformPrefixExtension = string.Empty;
         }
 
@@ -285,14 +312,25 @@ namespace Sharpmake
             return includePaths;
         }
 
+        protected virtual IEnumerable<IncludeWithPrefix> GetPlatformIncludePathsWithPrefixImpl(IGenerationContext context)
+        {
+            yield break;
+        }
+
+        [Obsolete("Implement GetPlatformIncludePathsWithPrefixImpl instead")]
         protected virtual IEnumerable<string> GetPlatformIncludePathsImpl(IGenerationContext context)
         {
             yield break;
         }
 
-        private IEnumerable<string> MakePathsRelative(IGenerationContext context, Func<IGenerationContext, IEnumerable<string>> func)
+        protected virtual IEnumerable<string> GetResourceIncludePathsImpl(IGenerationContext context)
         {
-            return Util.PathGetRelative(context.ProjectDirectory, new OrderableStrings(func(context)));
+            var resourceIncludePaths = new OrderableStrings();
+            resourceIncludePaths.AddRange(context.Configuration.ResourceIncludePrivatePaths);
+            resourceIncludePaths.AddRange(context.Configuration.ResourceIncludePaths);
+            resourceIncludePaths.AddRange(context.Configuration.DependenciesResourceIncludePaths);
+
+            return resourceIncludePaths;
         }
 
         #endregion

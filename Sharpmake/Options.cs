@@ -52,6 +52,29 @@ namespace Sharpmake
             public string Value { get; }
         }
 
+        /// <summary>
+        /// Used to hold an option that's a path, either to a file or directory, that's gonna be resolved
+        /// </summary>
+        public abstract class PathOption
+        {
+            public static string Get<T>(Project.Configuration conf, string fallback = RemoveLineTag)
+                where T : PathOption
+            {
+                var option = Options.GetObject<T>(conf);
+                if (option == null)
+                    return fallback;
+
+                return option.Path;
+            }
+
+            protected PathOption(string path)
+            {
+                Path = path;
+            }
+
+            public string Path;
+        }
+
         public abstract class IntOption
         {
             public static string Get<T>(Project.Configuration conf)
@@ -274,7 +297,7 @@ namespace Sharpmake
             }
         }
 
-        public static Strings GetStrings<T>(Configuration conf)
+        public static Strings GetStrings<T>(Configuration conf) where T : Strings
         {
             List<object> options = conf.Options;
             Strings values = new Strings();
@@ -289,7 +312,7 @@ namespace Sharpmake
             return values;
         }
 
-        public static string GetString<T>(Configuration conf)
+        public static string GetString<T>(Configuration conf) where T : StringOption
         {
             List<object> options = conf.Options;
 

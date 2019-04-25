@@ -80,9 +80,9 @@ Settings
 //=================================================================================================================
 Compiler( '[fastbuildCompilerName]' )
 {
-    .RootPath     = '[fastBuildVisualStudioEnvironment]'
-    .Executable   = '[fastBuildCompilerExecutable]'
-    .ExtraFiles   = [fastBuildExtraFiles]
+    .ExecutableRootPath     = '[fastBuildCompilerRootPath]'
+    .Executable             = '[fastBuildCompilerExecutable]'
+    .ExtraFiles             = [fastBuildExtraFiles]
     [fastBuildVS2012EnumBugWorkaround]
 }
 ";
@@ -101,8 +101,9 @@ Compiler( '[fastbuildCompilerName]' )
     .Executable             = '[fastBuildExecutable]'
 ]
 ";
+
                 public static string LinkerOptions = @"
-    .LinkerOptions          = '/OUT:""%2"" ""%1""[dllOption]'
+    .LinkerOptions          = '/OUT:""%2""[dllOption]'
                             // General
                             // ---------------------------
                             + ' [cmdLineOptions.ShowProgress]'
@@ -116,6 +117,10 @@ Compiler( '[fastbuildCompilerName]' )
                             + ' [cmdLineOptions.IgnoreAllDefaultLibraries]'
                             + ' [cmdLineOptions.IgnoreDefaultLibraryNames]'
                             + ' [cmdLineOptions.DelayLoadedDLLs]'
+                            + ' [cmdLineOptions.EmbedResources]'
+                            // Input files
+                            // ---------------------------
+                            + ' ""%1""'
                             // Manifest
                             // ---------------------------
                             + ' [cmdLineOptions.GenerateManifest]'
@@ -135,6 +140,7 @@ Compiler( '[fastbuildCompilerName]' )
                             + ' [cmdLineOptions.HeapCommitSize]'
                             + ' [cmdLineOptions.StackReserveSize]'
                             + ' [cmdLineOptions.StackCommitSize]'
+                            + ' [cmdLineOptions.AllowIsolation]'
                             + ' [cmdLineOptions.LargeAddressAware]'
                             // Optimization
                             // ---------------------------
@@ -171,6 +177,7 @@ Compiler( '[fastbuildCompilerName]' )
     .PCHOutputFile          = '[cmdLineOptions.PrecompiledHeaderFile]'
     .PCHOptions             = '""%1"" /Fp""%2"" /Fo""%3"" /c'
                             + ' /Yc""[cmdLineOptions.PrecompiledHeaderThrough]""'
+                            + ' [fastBuildPCHForceInclude]'
                             + ' $CompilerExtraOptions$'
                             + ' $CompilerOptimizations$'
 
@@ -190,7 +197,8 @@ Compiler( '[fastbuildCompilerName]' )
 ";
 
                 public static string UsePrecompClang = @"-include-pch $PCHOutputFile$";
-                public static string UsePrecomp = @"/Yu""[cmdLineOptions.PrecompiledHeaderThrough]"" /Fp""$PCHOutputFile$""";
+                public static string UsePrecomp = @"/Yu""[cmdLineOptions.PrecompiledHeaderThrough]"" /Fp""$PCHOutputFile$""'
+                            + ' [fastBuildPCHForceInclude]";
 
                 public static string ResourceCompilerOptions = @"
     // Resource Compiler options
@@ -208,10 +216,23 @@ Compiler( '[fastbuildCompilerName]' )
                                     + ' [cmdLineOptions.AdditionalResourceIncludeDirectories]'
 ";
 
+                public static string EmbeddedResourceCompilerOptions = @"
+    // Resource Compiler options
+    // -------------------------
+    .Compiler               = '[fastBuildEmbeddedResourceCompiler]'
+    .CompilerOutputPrefix   = '[fastBuildEmbeddedOutputPrefix]'
+    .CompilerOutputExtension= '.resources'
+    .CompilerOptions        = '/useSourcePath ""%1"" ""%2""'
+    .CompilerOutputPath     = '$Intermediate$'
+    .CompilerInputFiles     = [fastBuildEmbeddedResources]
+
+";
+
                 public static string CompilerOptionsCommon = @"
     .CompilerInputUnity       = '[fastBuildUnityName]'
     .CompilerOutputPath       = '$Intermediate$'
-    .CompilerInputPath        = '[fastBuildInputPath]'
+    .CompilerInputPath        = [fastBuildInputPath]
+    .CompilerInputPattern     = [fastBuildCompilerInputPattern]
     .CompilerInputExcludedFiles = [fastBuildInputExcludedFiles]
     .CompilerInputFiles       = [fastBuildSourceFiles]
 
@@ -241,8 +262,7 @@ Compiler( '[fastbuildCompilerName]' )
 ";
 
                 public static string LibrarianAdditionalInputs = @"
-    .LibrarianAdditionalInputs = { [fastBuildLibrarianAdditionalInputs]
-                                 }
+    .LibrarianAdditionalInputs = [fastBuildLibrarianAdditionalInputs]
 ";
 
                 public static string LibrarianOptions = @"
@@ -260,10 +280,15 @@ Compiler( '[fastbuildCompilerName]' )
 ";
 
                 public static string MasmCompilerExtraOptions = @"
-    // General options
-    // ---------------
-    .CompilerExtraOptions   = '/nologo /W3 /errorReport:queue'
-
+    .CompilerExtraOptions   = ''
+            // General options
+            // ---------------------------
+            + ' /nologo'
+            + ' /W3'
+            + ' /errorReport:queue'
+            // Preprocessor options
+            // ---------------------------
+            + ' [cmdLineOptions.PreprocessorDefinitions]'
 ";
 
                 public static string CPPCompilerExtraOptions = @"
@@ -278,6 +303,7 @@ Compiler( '[fastbuildCompilerName]' )
             + ' [cmdLineOptions.SuppressStartupBanner]'
             + ' [cmdLineOptions.WarningLevel]'
             + ' [cmdLineOptions.TreatWarningAsError]'
+            + ' [cmdLineOptions.DiagnosticsFormat]'
             + ' [fastBuildCompileAsC]'
             // Multi-threaded build is already handled by FASTBuild
             // + ' [cmdLineOptions.MultiProcessorCompilation]'
@@ -310,8 +336,10 @@ Compiler( '[fastbuildCompilerName]' )
             + ' [cmdLineOptions.DisableLanguageExtensions]'
             + ' [cmdLineOptions.TreatWChar_tAsBuiltInType]'
             + ' [cmdLineOptions.ForceConformanceInForLoopScope]'
+            + ' [cmdLineOptions.RemoveUnreferencedCodeData]'
             + ' [cmdLineOptions.RuntimeTypeInfo]'
             + ' [cmdLineOptions.OpenMP]'
+            + ' [cmdLineOptions.LanguageStandard]'
             // Output Files options
             // ---------------------------
             + ' [cmdLineOptions.CompilerProgramDatabaseFile]'
@@ -347,6 +375,7 @@ Compiler( '[fastbuildCompilerName]' )
                 public static string CPPCompilerOptionsDeoptimize = @"
     .CompilerOptionsDeoptimized = '""%1"" /Fo""%2"" /c'
                             + ' [fastBuildCompilerPCHOptions]'
+                            + ' [fastBuildPCHForceInclude]'
                             + ' $CompilerExtraOptions$'
                             + ' /Od'
 ";
@@ -360,6 +389,10 @@ Compiler( '[fastbuildCompilerName]' )
                 public static string DeOptimizeOption = @"
     .DeoptimizeWritableFiles = [fastBuildDeoptimizationWritableFiles]
     .DeoptimizeWritableFilesWithToken = [fastBuildDeoptimizationWritableFilesWithToken]
+";
+                public static string PreBuildDependencies = @"
+    .PreBuildDependencies = { [fastBuildPreBuildTargets]
+                            }
 ";
 
                 public static string PlatformBeginSection = @"
@@ -393,8 +426,7 @@ Library( '[fastBuildOutputFileShortName]_[fastBuildOutputType]' )
 //=================================================================================================================
 Alias( '[fastBuildOutputFileShortName]' )
 {
-    .Targets = { [fastBuildTargetSubTargets]
-               }
+    .Targets = [fastBuildTargetSubTargets]
 }
 
 ";
@@ -423,6 +455,7 @@ Copy( '[fastBuildCopyAlias]' )
                                 [fastBuildObjectListDependencies]
                                 '[fastBuildOutputFileShortName]_objects'
                               }
+    .LinkerAssemblyResources = { [fastBuildObjectListEmbeddedResources] }
     .LinkerOutput           = '[fastBuildLinkerOutputFile]'
     .LinkerLinkObjects      = [fastBuildLinkerLinkObjects]
     .LinkerStampExe         = '[fastBuildStampExecutable]'
@@ -439,6 +472,16 @@ ObjectList( '[fastBuildOutputFileShortName]_resources' )
     .Intermediate           = '[cmdLineOptions.IntermediateDirectory]\'
 ";
 
+                public static string EmbeddedResourcesBeginSection = @"
+//=================================================================================================================
+// ObjectList [fastBuildOutputFileShortName]_embedded
+//=================================================================================================================
+ObjectList( '[fastBuildOutputFileShortName]_embedded' )
+{
+     [fastBuildUsingPlatformConfig]
+    .Intermediate           = '[cmdLineOptions.IntermediateDirectory]\'
+";
+
                 public static string ObjectListBeginSection = @"
 //=================================================================================================================
 // ObjectList [fastBuildOutputFileShortName]_objects
@@ -448,17 +491,6 @@ ObjectList( '[fastBuildOutputFileShortName]_objects' )
      [fastBuildUsingPlatformConfig]
     .Intermediate           = '[cmdLineOptions.IntermediateDirectory]\'
 ";
-
-                public static string GenericObjectListBeginSection = @"
-//=================================================================================================================
-// ObjectList [objectListName]_objects
-//=================================================================================================================
-ObjectList( '[objectListName]_objects' )
-{
-     [fastBuildUsingPlatformConfig]
-    .Intermediate           = '[cmdLineOptions.IntermediateDirectory]\'
-";
-
 
                 public static string GenericExcutableSection = @"
 //=================================================================================================================
@@ -476,6 +508,22 @@ Exec( '[fastBuildPreBuildName]' )
 
 ";
 
+                public static string TestSection = @"
+//=================================================================================================================
+// Test [fastBuildTest]
+//=================================================================================================================
+Test( '[fastBuildTest]' )
+{
+  .TestExecutable        = '[fastBuildTestExecutable]'
+  .TestOutput            = '[fastBuildTestOutput]'
+  .TestArguments         = '[fastBuildTestArguments]'
+  .TestWorkingDir        = '[fastBuildTestWorkingDir]'
+  .TestTimeOut           =  [fastBuildTestTimeOut]
+  .TestAlwaysShowOutput  =  [fastBuildTestAlwaysShowOutput]
+}
+
+";
+
                 public static string UnityBeginSection = @"
 //=================================================================================================================
 // Master .bff Unity/Blob files (shared across configs)
@@ -484,14 +532,14 @@ Exec( '[fastBuildPreBuildName]' )
                 public static string UnitySection = @"
 Unity( '[unityFile.UnityName]' )
 {
-    .UnityInputPath                     = '[unityFile.UnityInputPath]'
+    .UnityInputPath                     = [unityFile.UnityInputPath]
     .UnityInputExcludePath              = [unityFile.UnityInputExcludePath]
-    .UnityInputExcludePattern           = '[unityFile.UnityInputExcludePattern]'
-    .UnityInputPattern                  = '[unityFile.UnityInputPattern]'
+    .UnityInputExcludePattern           = [unityFile.UnityInputExcludePattern]
+    .UnityInputPattern                  = [unityFile.UnityInputPattern]
     .UnityInputPathRecurse              = '[unityFile.UnityInputPathRecurse]'
     .UnityInputFiles                    = [unityFile.UnityInputFiles]
     .UnityInputExcludedFiles            = [unityFile.UnityInputExcludedFiles]
-    .UnityInputObjectLists              = '[unityFile.UnityInputObjectLists]'
+    .UnityInputObjectLists              = [unityFile.UnityInputObjectLists]
     .UnityInputIsolateWritableFiles     =  [unityFile.UnityInputIsolateWritableFiles]
     .UnityInputIsolateWritableFilesLimit = [unityFile.UnityInputIsolateWritableFilesLimit]
     .UnityOutputPath                    = '[unityFile.UnityOutputPath]'
@@ -520,6 +568,14 @@ Alias( 'All-Configs' )
     .Targets =
     [fastBuildConfigs]
 }
+";
+
+                public static string IncludeMasterBff = @"
+//=================================================================================================================
+// Entry BFF for [solutionFileName]
+//=================================================================================================================
+#once
+#include ""[masterBffFilePath]""
 ";
             }
         }

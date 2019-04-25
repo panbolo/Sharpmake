@@ -15,6 +15,18 @@ using System.Collections.Generic;
 
 namespace Sharpmake.Generators.VisualStudio
 {
+    public class IncludeWithPrefix
+    {
+        public string CmdLinePrefix;
+        public string Path;
+
+        public IncludeWithPrefix(string cmdLinePrefix, string includePath)
+        {
+            CmdLinePrefix = cmdLinePrefix;
+            Path = includePath;
+        }
+    }
+
     public interface IPlatformVcxproj
     {
         string ExecutableFileExtension { get; }
@@ -30,7 +42,6 @@ namespace Sharpmake.Generators.VisualStudio
         IEnumerable<string> GetImplicitlyDefinedSymbols(IGenerationContext context);
 
         IEnumerable<string> GetLibraryPaths(IGenerationContext context);
-        IEnumerable<string> GetPlatformLibraryPaths(IGenerationContext context);
 
         IEnumerable<string> GetLibraryFiles(IGenerationContext context);
         IEnumerable<string> GetPlatformLibraryFiles(IGenerationContext context);
@@ -39,6 +50,8 @@ namespace Sharpmake.Generators.VisualStudio
         // are the platform's include paths.
         IEnumerable<string> GetIncludePaths(IGenerationContext context);
         IEnumerable<string> GetPlatformIncludePaths(IGenerationContext context);
+        IEnumerable<IncludeWithPrefix> GetPlatformIncludePathsWithPrefix(IGenerationContext context);
+        IEnumerable<string> GetResourceIncludePaths(IGenerationContext context);
 
         IEnumerable<string> GetCxUsingPath(IGenerationContext context);
 
@@ -68,6 +81,7 @@ namespace Sharpmake.Generators.VisualStudio
         void GenerateProjectConfigurationGeneral(IVcxprojGenerationContext context, IFileGenerator generator);
         void GenerateProjectConfigurationGeneral2(IVcxprojGenerationContext context, IFileGenerator generator); // TODO: Merge with the above function and edit the reference projects.
         void GenerateProjectConfigurationFastBuildMakeFile(IVcxprojGenerationContext context, IFileGenerator generator);
+        void GenerateProjectConfigurationCustomMakeFile(IVcxprojGenerationContext context, IFileGenerator generator);
         void GenerateProjectPlatformImportSheet(IVcxprojGenerationContext context, IFileGenerator generator);
         void GeneratePlatformResourceFileList(IVcxprojGenerationContext context, IFileGenerator generator, Strings alreadyWrittenPriFiles, IList<Vcxproj.ProjectFile> resourceFiles, IList<Vcxproj.ProjectFile> imageResourceFiles);
         void GeneratePlatformReferences(IVcxprojGenerationContext context, IFileGenerator generator);

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Ubisoft Entertainment
+// Copyright (c) 2017 Ubisoft Entertainment
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,8 +24,12 @@ using Sharpmake.Generators.FastBuild;
 
 namespace Sharpmake.Generators.VisualStudio
 {
-    public partial class Vcxproj
+    public partial class Vcxproj : IProjectGenerator
     {
+        // dev option for now, this will disable visual studio registry lookups
+        // use with care!
+        private const bool _enableRegistryUse = true;
+
         public enum BuildStep
         {
             PreBuild = 0x01,
@@ -34,7 +38,7 @@ namespace Sharpmake.Generators.VisualStudio
             PostBuildCustomAction = 0x04,
         }
 
-        class GenerationContext : IVcxprojGenerationContext
+        private class GenerationContext : IVcxprojGenerationContext
         {
             private Options.ExplicitOptions _options;
             private IDictionary<string, string> _cmdLineOptions;
@@ -170,6 +174,58 @@ namespace Sharpmake.Generators.VisualStudio
         public const string ProjectExtension = ".vcxproj";
         private const string ProjectFilterExtension = ".filters";
         private const string CopyDependenciesExtension = "_runtimedependencies.txt";
+        public const string EventSeparator = "&#x0D;&#x0A;";
+
+        // Vcxproj only allows one file command per input file, so we collapse
+        // the commands into a single command per file.
+        public class CombinedCustomFileBuildStep
+        {
+            public string Commands = "";
+            public string Description = "";
+            public string Outputs = "";
+            public string AdditionalInputs = "";
+        };
+
+        public static Dictionary<string, CombinedCustomFileBuildStep> CombineCustomFileBuildSteps(string referencePath, Resolver resolver, IEnumerable<Project.Configuration.CustomFileBuildStep> buildSteps)
+        {
+            // Map from relative input file to command to run on that file, for this configuration.
+            var steps = new Dictionary<string, CombinedCustomFileBuildStep>();
+
+            foreach (var customBuildStep in buildSteps)
+            {
+                var relativeBuildStep = customBuildStep.MakePathRelative(resolver, (path, commandRelative) => Util.SimplifyPath(Util.PathGetRelative(referencePath, path)));
+                relativeBuildStep.AdditionalInputs.Add(relativeBuildStep.Executable);
+                // Build the command.
+                string command = string.Format(
+                    "{0} {1}",
+                    relativeBuildStep.Executable,
+                    relativeBuildStep.ExecutableArguments
+                );
+
+                command = Util.EscapeXml(command) + EventSeparator;
+                CombinedCustomFileBuildStep combinedCustomBuildStep;
+                // This needs to be project relative to work.
+                string FileKey = Util.SimplifyPath(Util.PathGetRelative(referencePath, customBuildStep.KeyInput));
+                if (!steps.TryGetValue(FileKey, out combinedCustomBuildStep))
+                {
+                    combinedCustomBuildStep = new CombinedCustomFileBuildStep();
+                    steps.Add(FileKey, combinedCustomBuildStep);
+                }
+                else
+                {
+                    // Add separators.
+                    combinedCustomBuildStep.Description += ";";
+                    combinedCustomBuildStep.Outputs += ";";
+                    combinedCustomBuildStep.AdditionalInputs += ";";
+                }
+                combinedCustomBuildStep.Commands += command;
+                combinedCustomBuildStep.Description += relativeBuildStep.Description;
+                combinedCustomBuildStep.Outputs = Util.EscapeXml(relativeBuildStep.Output);
+                combinedCustomBuildStep.AdditionalInputs = Util.EscapeXml(relativeBuildStep.AdditionalInputs.JoinStrings(";"));
+            }
+
+            return steps;
+        }
 
         /// <summary>
         /// Generate a pseudo Guid base on relative path from the Project CsPath to the generated files
@@ -179,6 +235,126 @@ namespace Sharpmake.Generators.VisualStudio
         {
             string reletiveToCsProjectFile = Util.PathGetRelative(project.SharpmakeCsPath, outputProjectFile);
             return Util.BuildGuid(reletiveToCsProjectFile).ToString().ToUpper();
+        }
+
+        private void WriteWindowsKitsOverrides(GenerationContext context, FileGenerator fileGenerator)
+        {
+            KitsRootEnum? kitsRootWritten = null;
+            for (DevEnv devEnv = context.DevelopmentEnvironmentsRange.MinDevEnv; devEnv <= context.DevelopmentEnvironmentsRange.MaxDevEnv; ++devEnv)
+            {
+                // there's no need to write the properties with older versions of vs, as we override
+                // completely the VC++ directories entries in the vcxproj
+                if (devEnv < DevEnv.vs2015)
+                    continue;
+
+                KitsRootEnum kitsRootVersion = KitsRootPaths.GetUseKitsRootForDevEnv(devEnv);
+                if (kitsRootWritten == null)
+                    kitsRootWritten = kitsRootVersion;
+                else if (kitsRootWritten != kitsRootVersion)
+                    throw new Error($"Different values of kitsRoot in the same vcxproj {context.ProjectFileName}");
+                else
+                    continue;
+
+                string windowsSdkDirKey = FileGeneratorUtilities.RemoveLineTag;
+                string windowsSdkDirValue = FileGeneratorUtilities.RemoveLineTag;
+
+                string UniversalCRTSdkDir_10 = FileGeneratorUtilities.RemoveLineTag;
+                string UCRTContentRoot = FileGeneratorUtilities.RemoveLineTag;
+
+                string targetPlatformVersionString = FileGeneratorUtilities.RemoveLineTag;
+                if (kitsRootVersion != KitsRootEnum.KitsRoot81) // 8.1 is the default value for vs2015 and vs2017, so only specify a different platformVersion if we need to
+                    targetPlatformVersionString = KitsRootPaths.GetWindowsTargetPlatformVersionForDevEnv(devEnv).ToVersionString();
+
+                if (devEnv.OverridenWindowsPath())
+                {
+                    windowsSdkDirValue = Util.EnsureTrailingSeparator(KitsRootPaths.GetRoot(kitsRootVersion));
+                    switch (kitsRootVersion)
+                    {
+                        case KitsRootEnum.KitsRoot:
+                            windowsSdkDirKey = "WindowsSdkDir_80";
+                            break;
+                        case KitsRootEnum.KitsRoot81:
+                            windowsSdkDirKey = "WindowsSdkDir_81";
+                            break;
+                        case KitsRootEnum.KitsRoot10:
+                            {
+                                windowsSdkDirKey = "WindowsSdkDir_10";
+                                UniversalCRTSdkDir_10 = windowsSdkDirValue;
+
+                                // this variable is found in Windows Kits\10\DesignTime\CommonConfiguration\Neutral\uCRT.props
+                                // it is always read from the registry unless overriden, so we need to explicitely set it
+                                UCRTContentRoot = windowsSdkDirValue;
+                            }
+                            break;
+                        default:
+                            throw new NotImplementedException($"Unsupported kitsRoot '{kitsRootVersion}'");
+                    }
+                }
+
+                using (fileGenerator.Declare("windowsSdkDirKey", windowsSdkDirKey))
+                using (fileGenerator.Declare("windowsSdkDirValue", windowsSdkDirValue))
+                using (fileGenerator.Declare("UniversalCRTSdkDir_10", UniversalCRTSdkDir_10))
+                using (fileGenerator.Declare("UCRTContentRoot", UCRTContentRoot))
+                using (fileGenerator.Declare("targetPlatformVersion", targetPlatformVersionString))
+                {
+                    fileGenerator.Write(Template.Project.WindowsSDKOverrides);
+                }
+
+                // vs2015 specific, we need to set the UniversalCRTSdkDir to $(UniversalCRTSdkDir_10) because it is not done in the .props
+                if (devEnv == DevEnv.vs2015 && UniversalCRTSdkDir_10 != FileGeneratorUtilities.RemoveLineTag)
+                {
+                    using (fileGenerator.Declare("custompropertyname", "UniversalCRTSdkDir"))
+                    using (fileGenerator.Declare("custompropertyvalue", "$(UniversalCRTSdkDir_10)"))
+                        fileGenerator.Write(fileGenerator.Resolver.Resolve(Template.Project.CustomProperty));
+                }
+            }
+        }
+
+        private void WriteVcOverrides(GenerationContext context, FileGenerator fileGenerator)
+        {
+            bool registrySettingWritten = false;
+
+            bool? overrideCheck = null;
+            for (DevEnv devEnv = context.DevelopmentEnvironmentsRange.MinDevEnv; devEnv <= context.DevelopmentEnvironmentsRange.MaxDevEnv; ++devEnv)
+            {
+                bool vsDirOverriden = devEnv.OverridenVisualStudioDir();
+                if (overrideCheck.HasValue)
+                {
+                    if (vsDirOverriden != overrideCheck)
+                        throw new Error($"Some DevEnv are overriden and some are not in the vcxproj '{context.ProjectFileName}'. Please override all or none.");
+                }
+                else
+                {
+                    overrideCheck = vsDirOverriden;
+                }
+
+                if (!vsDirOverriden)
+                    continue;
+
+                if (!devEnv.IsVisualStudio())
+                    throw new Error(devEnv + " is not recognized as being visual studio");
+
+                if (!_enableRegistryUse && !registrySettingWritten)
+                {
+                    fileGenerator.Write(Template.Project.DisableRegistryUse);
+                    registrySettingWritten = true;
+                }
+
+                string vcRootPathKey;
+                switch (devEnv)
+                {
+                    case DevEnv.vs2012: vcRootPathKey = "VCInstallDir_110"; break;
+                    case DevEnv.vs2013: vcRootPathKey = "VCInstallDir_120"; break;
+                    case DevEnv.vs2015: vcRootPathKey = "VCInstallDir_140"; break;
+                    case DevEnv.vs2017: vcRootPathKey = "VCToolsInstallDir_150"; break;
+                    default:
+                        throw new NotImplementedException("Please implement redirection of toolchain for " + devEnv);
+                }
+
+                using (fileGenerator.Declare("custompropertyname", vcRootPathKey))
+                using (fileGenerator.Declare("custompropertyvalue", Util.EnsureTrailingSeparator(devEnv.GetVisualStudioVCRootPath())))
+                    fileGenerator.Write(fileGenerator.Resolver.Resolve(Template.Project.CustomProperty));
+            }
         }
 
         private void GenerateImpl(GenerationContext context, IList<string> generatedFiles, IList<string> skipFiles)
@@ -196,11 +372,12 @@ namespace Sharpmake.Generators.VisualStudio
                 else if (projectName != conf.ProjectName)
                     throw new Error("Project configurations in the same project files must be the same: {0} != {1} in {2}", projectName, conf.ProjectName, context.ProjectFileName);
 
-                var platformVcxproj = PlatformRegistry.Get<IPlatformVcxproj>(conf.Platform);
+                var platformVcxproj = context.PresentPlatforms[conf.Platform];
+                var configurationTasks = PlatformRegistry.Get<Project.Configuration.IConfigurationTasks>(conf.Platform);
                 conf.GeneratorSetGeneratedInformation(
                     platformVcxproj.ExecutableFileExtension,
                     platformVcxproj.PackageFileExtension,
-                    platformVcxproj.SharedLibraryFileExtension,
+                    configurationTasks.GetDefaultOutputExtension(Project.Configuration.OutputType.Dll),
                     platformVcxproj.ProgramDatabaseFileExtension);
             }
 
@@ -215,7 +392,7 @@ namespace Sharpmake.Generators.VisualStudio
                 sccProvider = "MSSCCI:Perforce SCM";
             }
 
-            var fileGenerator = new FileGenerator();
+            var fileGenerator = new XmlFileGenerator();
 
             var firstConf = context.ProjectConfigurations.First();
 
@@ -276,59 +453,52 @@ namespace Sharpmake.Generators.VisualStudio
                 targetFrameworkString = Util.GetDotNetTargetString(firstConf.Target.GetFragment<DotNetFramework>());
             }
 
-            string windowsSdkDir10 = FileGeneratorUtilities.RemoveLineTag;
-            string targetPlatformVersionString = FileGeneratorUtilities.RemoveLineTag;
-            if (context.DevelopmentEnvironmentsRange.MinDevEnv >= DevEnv.vs2015)
-            {
-                windowsSdkDir10 = KitsRootPaths.GetRoot(KitsRootEnum.KitsRoot10);
-                targetPlatformVersionString = KitsRootPaths.GetWindowsTargetPlatformVersion();
-            }
-
-            string vc11TargetsPath = Template.Project.ProjectDescriptionVC11TargetsPath;
-            if (context.DevelopmentEnvironmentsRange.MinDevEnv >= DevEnv.vs2013)
-                vc11TargetsPath = FileGeneratorUtilities.RemoveLineTag;
-
-            // xml end header
-
             using (fileGenerator.Declare("projectName", projectName))
             using (fileGenerator.Declare("guid", firstConf.ProjectGuid))
             using (fileGenerator.Declare("sccProjectName", sccProjectName))
             using (fileGenerator.Declare("sccLocalPath", sccLocalPath))
             using (fileGenerator.Declare("sccProvider", sccProvider))
             using (fileGenerator.Declare("targetFramework", targetFrameworkString))
-            using (fileGenerator.Declare("targetPlatformVersion", targetPlatformVersionString))
-            using (fileGenerator.Declare("windowsSdkDir10", windowsSdkDir10))
             using (fileGenerator.Declare("projectKeyword", projectKeyword))
-            using (fileGenerator.Declare("vc11TargetsPath", vc11TargetsPath))
             {
-                fileGenerator.Write(Template.Project.ProjectDescription, FileGeneratorUtilities.RemoveLineTag);
+                fileGenerator.Write(Template.Project.ProjectDescription);
             }
 
-            foreach (var platform in context.PresentPlatforms.Values)
-                platform.GeneratePlatformSpecificProjectDescription(context, fileGenerator);
+            if (hasNonFastBuildConfig)
+                WriteWindowsKitsOverrides(context, fileGenerator);
 
-            fileGenerator.Write(Template.Project.ProjectDescriptionEnd, FileGeneratorUtilities.RemoveLineTag);
+            WriteVcOverrides(context, fileGenerator);
+
+            fileGenerator.Write(Template.Project.PropertyGroupEnd);
+            // xml end header
+
+            foreach (var platform in context.PresentPlatforms)
+            {
+                using (fileGenerator.Declare("platformName", Util.GetSimplePlatformString(platform.Key)))
+                    platform.Value.GeneratePlatformSpecificProjectDescription(context, fileGenerator);
+            }
+
+            fileGenerator.Write(Template.Project.ImportCppDefaultProps);
 
             foreach (var platform in context.PresentPlatforms.Values)
                 platform.GenerateProjectPlatformSdkDirectoryDescription(context, fileGenerator);
 
             // generate all configuration options onces...
             Dictionary<Project.Configuration, Options.ExplicitOptions> options = new Dictionary<Project.Configuration, Options.ExplicitOptions>();
-            Dictionary<Project.Configuration, ProjectOptionsGenerator.VcxprojCmdLineOptions> cmdLineOptions = new Dictionary<Project.Configuration, ProjectOptionsGenerator.VcxprojCmdLineOptions>();
             ProjectOptionsGenerator projectOptionsGen = new ProjectOptionsGenerator();
             foreach (Project.Configuration conf in context.ProjectConfigurations)
             {
-                var confOptions = new Options.ExplicitOptions();
-                var confCmdLineOptions = new ProjectOptionsGenerator.VcxprojCmdLineOptions();
+                context.Options = new Options.ExplicitOptions();
+                context.CommandLineOptions = new ProjectOptionsGenerator.VcxprojCmdLineOptions();
 
                 context.Configuration = conf;
-                context.Options = confOptions;
-                context.CommandLineOptions = confCmdLineOptions;
                 projectOptionsGen.GenerateOptions(context);
-                context.Reset(); // just a safety, not necessary to clean up
+                FillIncludeDirectoriesOptions(context);
+                FillLibrariesOptions(context);
 
-                options.Add(conf, confOptions);
-                cmdLineOptions.Add(conf, confCmdLineOptions);
+                options.Add(conf, context.Options);
+
+                context.Reset(); // just a safety, not necessary to clean up
             }
 
             // user file
@@ -362,6 +532,26 @@ namespace Sharpmake.Generators.VisualStudio
                     fileGenerator.Write(Template.Project.ProjectImportedProps);
                 }
             }
+
+            // configuration .props files
+            foreach (Project.Configuration conf in context.ProjectConfigurations)
+            {
+                using (fileGenerator.Declare("platformName", Util.GetPlatformString(conf.Platform, conf.Project)))
+                using (fileGenerator.Declare("conf", conf))
+                {
+                    foreach (string propsFile in conf.CustomPropsFiles)
+                    {
+                        string capitalizedFile = Project.GetCapitalizedFile(propsFile) ?? propsFile;
+
+                        string relativeFile = Util.PathGetRelative(context.ProjectDirectoryCapitalized, capitalizedFile);
+                        using (fileGenerator.Declare("importedPropsFile", relativeFile))
+                        {
+                            fileGenerator.Write(Template.Project.ProjectConfigurationImportedProps);
+                        }
+                    }
+                }
+            }
+
             fileGenerator.Write(Template.Project.ProjectImportedPropsEnd);
             fileGenerator.Write(Template.Project.ProjectAfterConfigurationsGeneralImportPropertySheets);
             foreach (var platform in context.PresentPlatforms.Values)
@@ -377,6 +567,7 @@ namespace Sharpmake.Generators.VisualStudio
                 using (fileGenerator.Declare("platformName", Util.GetPlatformString(conf.Platform, conf.Project)))
                 using (fileGenerator.Declare("conf", conf))
                 using (fileGenerator.Declare("options", options[conf]))
+                using (fileGenerator.Declare("target", conf.Target))
                 {
                     var platformVcxproj = PlatformRegistry.Get<IPlatformVcxproj>(conf.Platform);
 
@@ -428,28 +619,25 @@ namespace Sharpmake.Generators.VisualStudio
                             fastBuildCommandLineOptions += " -fastcancel";
 
                         if (!string.IsNullOrEmpty(conf.FastBuildCustomArgs))
-                        {
-                            fastBuildCommandLineOptions += " ";
-                            fastBuildCommandLineOptions += conf.FastBuildCustomArgs;
-                        }
-                        string masterBffPath = Bff.GetMasterBffPath(conf);
-                        string masterBffFullName = Bff.GetMasterBffFileName(conf);
-                        string relativeMasterBffFile = Util.PathGetRelative(masterBffPath, masterBffFullName, true);
-                        string relativeMasterBffPath = Util.PathGetRelative(context.ProjectDirectory, masterBffPath, true);
-                        if (relativeMasterBffFile != "fbuild.bff")
-                            fastBuildCommandLineOptions += " -config " + relativeMasterBffFile;
+                            fastBuildCommandLineOptions += " " + conf.FastBuildCustomArgs;
 
                         fastBuildCommandLineOptions += FastBuildCustomArguments;
 
-                        // Make the commandline written in the bff available.
+                        // Make the commandline written in the bff available, except the master bff -config
                         Bff.SetCommandLineArguments(conf, fastBuildCommandLineOptions);
 
-                        using (fileGenerator.Declare("relativeMasterBffPath", relativeMasterBffPath))
+                        fastBuildCommandLineOptions += " -config $(SolutionName)" + FastBuildSettings.FastBuildConfigFileExtension;
+
+                        using (fileGenerator.Declare("relativeMasterBffPath", "$(SolutionDir)"))
                         using (fileGenerator.Declare("fastBuildMakeCommandBuild", FastBuildSettings.MakeCommandGenerator.GetCommand(FastBuildMakeCommandGenerator.BuildType.Build, conf, fastBuildCommandLineOptions)))
                         using (fileGenerator.Declare("fastBuildMakeCommandRebuild", FastBuildSettings.MakeCommandGenerator.GetCommand(FastBuildMakeCommandGenerator.BuildType.Rebuild, conf, fastBuildCommandLineOptions)))
                         {
                             platformVcxproj.GenerateProjectConfigurationFastBuildMakeFile(context, fileGenerator);
                         }
+                    }
+                    else if (conf.CustomBuildSettings != null)
+                    {
+                        platformVcxproj.GenerateProjectConfigurationCustomMakeFile(context, fileGenerator);
                     }
                     else
                     {
@@ -510,10 +698,10 @@ namespace Sharpmake.Generators.VisualStudio
             // For all projects configurations that are fastbuild only, do not add the cpp
             // source file requires to be remove from the projects, so that not 2 same cpp file be in 2 different project.
             // TODO: make a better check
-            if (hasNonFastBuildConfig)
-                GenerateFilesSection(context, fileGenerator, generatedFiles, skipFiles);
-            else
-                GenerateBffFilesSection(context, fileGenerator, generatedFiles, skipFiles, false);
+            if (hasNonFastBuildConfig || !context.Project.StripFastBuildSourceFiles)
+                GenerateFilesSection(context, options, fileGenerator, generatedFiles, skipFiles);
+            else if (hasFastBuildConfig)
+                GenerateBffFilesSection(context, fileGenerator);
 
             // Import platform makefiles.
             foreach (var platform in context.PresentPlatforms.Values)
@@ -528,6 +716,25 @@ namespace Sharpmake.Generators.VisualStudio
                 using (fileGenerator.Declare("importedTargetsFile", relativeFile))
                 {
                     fileGenerator.Write(Template.Project.ProjectTargetsItem);
+                }
+            }
+
+            // configuration .targets files
+            foreach (Project.Configuration conf in context.ProjectConfigurations)
+            {
+                using (fileGenerator.Declare("platformName", Util.GetPlatformString(conf.Platform, conf.Project)))
+                using (fileGenerator.Declare("conf", conf))
+                {
+                    foreach (string targetsFile in conf.CustomTargetsFiles)
+                    {
+                        string capitalizedFile = Project.GetCapitalizedFile(targetsFile) ?? targetsFile;
+
+                        string relativeFile = Util.PathGetRelative(context.ProjectDirectoryCapitalized, capitalizedFile);
+                        using (fileGenerator.Declare("importedTargetsFile", relativeFile))
+                        {
+                            fileGenerator.Write(Template.Project.ProjectConfigurationImportedTargets);
+                        }
+                    }
                 }
             }
             fileGenerator.Write(Template.Project.ProjectTargetsEnd);
@@ -571,19 +778,138 @@ namespace Sharpmake.Generators.VisualStudio
                 skipFiles.Add(projectFileInfo.FullName);
         }
 
+        private static void FillIncludeDirectoriesOptions(GenerationContext context)
+        {
+            IPlatformVcxproj platformVcxproj = context.PresentPlatforms[context.Configuration.Platform];
+
+            // Fill include dirs
+            var includePaths = platformVcxproj.GetIncludePaths(context);
+            context.Options["AdditionalIncludeDirectories"] = includePaths.Any() ? Util.PathGetRelative(context.ProjectDirectory, includePaths).JoinStrings(";") : FileGeneratorUtilities.RemoveLineTag;
+
+            // Fill resource include dirs
+            var resourceIncludePaths = platformVcxproj.GetResourceIncludePaths(context);
+            context.Options["AdditionalResourceIncludeDirectories"] = resourceIncludePaths.Any() ? Util.PathGetRelative(context.ProjectDirectory, resourceIncludePaths).JoinStrings(";") : FileGeneratorUtilities.RemoveLineTag;
+        }
+
+        private static void FillLibrariesOptions(GenerationContext context)
+        {
+            IPlatformVcxproj platformVcxproj = context.PresentPlatforms[context.Configuration.Platform];
+
+            Strings ignoreSpecificLibraryNames = Options.GetStrings<Options.Vc.Linker.IgnoreSpecificLibraryNames>(context.Configuration);
+            ignoreSpecificLibraryNames.ToLower();
+            ignoreSpecificLibraryNames.InsertSuffix("." + platformVcxproj.StaticLibraryFileExtension, true);
+
+            context.Options["AdditionalDependencies"] = FileGeneratorUtilities.RemoveLineTag;
+            context.Options["AdditionalLibraryDirectories"] = FileGeneratorUtilities.RemoveLineTag;
+
+            if (!(context.Configuration.Output == Project.Configuration.OutputType.None || context.Configuration.Output == Project.Configuration.OutputType.Lib && !context.Configuration.ExportAdditionalLibrariesEvenForStaticLib))
+            {
+                //AdditionalLibraryDirectories
+                //                                            AdditionalLibraryDirectories="dir1;dir2"    /LIBPATH:"dir1" /LIBPATH:"dir2"
+                SelectAdditionalLibraryDirectoriesOption(context);
+
+                //AdditionalDependencies
+                //                                            AdditionalDependencies="lib1;lib2"      "lib1;lib2" 
+                SelectAdditionalDependenciesOption(context, ignoreSpecificLibraryNames);
+            }
+
+            ////IgnoreSpecificLibraryNames
+            ////                                            IgnoreDefaultLibraryNames=[lib]         /NODEFAULTLIB:[lib]
+            context.Options["IgnoreDefaultLibraryNames"] = ignoreSpecificLibraryNames.JoinStrings(";");
+        }
+
+        private static void SelectAdditionalLibraryDirectoriesOption(GenerationContext context)
+        {
+            IPlatformVcxproj platformVcxproj = context.PresentPlatforms[context.Configuration.Platform];
+
+            var libDirs = new OrderableStrings(context.Configuration.LibraryPaths);
+            libDirs.AddRange(context.Configuration.DependenciesOtherLibraryPaths);
+            libDirs.AddRange(context.Configuration.DependenciesBuiltTargetsLibraryPaths);
+            libDirs.AddRange(platformVcxproj.GetLibraryPaths(context));
+
+            if (libDirs.Any())
+            {
+                libDirs.Sort();
+
+                var relativeAdditionalLibraryDirectories = Util.PathGetRelative(context.ProjectDirectory, libDirs);
+                context.Options["AdditionalLibraryDirectories"] = string.Join(";", relativeAdditionalLibraryDirectories);
+            }
+            else
+            {
+                context.Options["AdditionalLibraryDirectories"] = FileGeneratorUtilities.RemoveLineTag;
+            }
+        }
+
+        private static void SelectAdditionalDependenciesOption(
+            GenerationContext context,
+            Strings ignoreSpecificLibraryNames
+        )
+        {
+            IPlatformVcxproj platformVcxproj = context.PresentPlatforms[context.Configuration.Platform];
+
+            var otherLibraryFiles = new OrderableStrings(context.Configuration.LibraryFiles);
+            otherLibraryFiles.AddRange(context.Configuration.DependenciesOtherLibraryFiles);
+            otherLibraryFiles.AddRange(platformVcxproj.GetLibraryFiles(context));
+            otherLibraryFiles.Sort();
+
+            // put the built library files before any other
+            var libraryFiles = new OrderableStrings(context.Configuration.DependenciesBuiltTargetsLibraryFiles);
+            libraryFiles.Sort();
+            libraryFiles.AddRange(otherLibraryFiles);
+
+            // convert all root paths to be relative to the project folder
+            for (int i = 0; i < libraryFiles.Count; ++i)
+            {
+                string libraryFile = libraryFiles[i];
+                if (Path.IsPathRooted(libraryFile))
+                    libraryFiles[i] = Util.GetConvertedRelativePath(context.ProjectDirectory, libraryFile, context.ProjectDirectory, true, context.Project.RootPath);
+            }
+
+            string libPrefix = platformVcxproj.GetOutputFileNamePrefix(context, Project.Configuration.OutputType.Lib);
+
+            var additionalDependencies = new Strings();
+            foreach (string libraryFile in libraryFiles)
+            {
+                // We've got two kinds of way of listing a library:
+                // - With a filename without extension we must add the potential prefix and potential extension.
+                //      Ex:  On clang we add -l (supposedly because the exact file is named lib<library>.a)
+                // - With a filename with a static or shared lib extension (eg. .a/.lib/.so), we shouldn't touch it as it's already set by the script.
+                string decoratedName = libraryFile;
+                string extension = Path.GetExtension(libraryFile).ToLower();
+                if (extension.StartsWith(".", StringComparison.Ordinal))
+                    extension = extension.Substring(1);
+
+                if (extension != platformVcxproj.StaticLibraryFileExtension && extension != platformVcxproj.SharedLibraryFileExtension)
+                {
+                    decoratedName = libPrefix + libraryFile;
+                    if (!string.IsNullOrEmpty(platformVcxproj.StaticLibraryFileExtension))
+                        decoratedName += "." + platformVcxproj.StaticLibraryFileExtension;
+                }
+
+                if (!ignoreSpecificLibraryNames.Contains(decoratedName))
+                    additionalDependencies.Add(decoratedName);
+                else
+                    ignoreSpecificLibraryNames.Remove(decoratedName);
+            }
+
+            context.Options["AdditionalDependencies"] = string.Join(";", additionalDependencies);
+
+            platformVcxproj.SelectPlatformAdditionalDependenciesOptions(context);
+        }
+
         private void WriteCustomProperties(IVcxprojGenerationContext context, IFileGenerator fileGenerator)
         {
             if (context.Project.CustomProperties.Keys.Count == 0)
                 return;
 
-            fileGenerator.Write(Template.Project.CustomPropertiesStart);
+            fileGenerator.Write(Template.Project.PropertyGroupStart);
             foreach (var key in context.Project.CustomProperties.Keys)
             {
                 using (fileGenerator.Declare("custompropertyname", key))
                 using (fileGenerator.Declare("custompropertyvalue", context.Project.CustomProperties[key]))
                     fileGenerator.Write(Template.Project.CustomProperty);
             }
-            fileGenerator.Write(Template.Project.CustomPropertiesEnd);
+            fileGenerator.Write(Template.Project.PropertyGroupEnd);
         }
 
         private struct ProjectDependencyInfo
@@ -686,6 +1012,9 @@ namespace Sharpmake.Generators.VisualStudio
                 {
                     foreach (var dependency in dotNetDependencies)
                     {
+                        if (dependency.Project.GetType().IsDefined(typeof(Export), false))
+                            continue; // Can't generate a project dependency for export projects(the project doesn't exist!!).
+
                         string include = Util.PathGetRelative(firstConf.ProjectPath, dependency.ProjectFullFileNameWithExtension);
 
                         // If dependency project is marked as [Compile], read the GUID from the project file
@@ -860,26 +1189,17 @@ namespace Sharpmake.Generators.VisualStudio
                 platforms.GeneratePlatformReferences(context, fileGenerator);
         }
 
-        private void GenerateBffFilesSection(IVcxprojGenerationContext context, IFileGenerator fileGenerator, IList<string> generatedFiles, IList<string> skipFiles, bool lookIfHasAnyFastBuild)
+        private void GenerateBffFilesSection(IVcxprojGenerationContext context, IFileGenerator fileGenerator)
         {
             // Add FastBuild bff file to Project
-            var firstConf = context.ProjectConfigurations.First();
-            if (firstConf.IsFastBuild && FastBuildSettings.IncludeBFFInProjects)
+            if (FastBuildSettings.IncludeBFFInProjects)
             {
                 string fastBuildFile = Bff.GetBffFileName(".", context.Configuration.BffFileName);
                 fastBuildFile = Util.SimplifyPath(fastBuildFile);
 
                 fileGenerator.Write(Template.Project.ProjectFilesBegin);
-                using (fileGenerator.Declare("fastBuildFile", fastBuildFile))
-                    fileGenerator.Write(Template.Project.ProjectFilesFastBuildFile);
-
-                if (firstConf.IsMainProject) // add the master bff file to the main project of the solution
                 {
-                    string masterBffFileName = Bff.GetMasterBffFileName(firstConf);
-                    using (fileGenerator.Declare("fastBuildFile", masterBffFileName))
-                        fileGenerator.Write(Template.Project.ProjectFilesFastBuildFile);
-
-                    using (fileGenerator.Declare("fastBuildFile", Bff.GetGlobalBffConfigFileName(masterBffFileName)))
+                    using (fileGenerator.Declare("fastBuildFile", fastBuildFile))
                         fileGenerator.Write(Template.Project.ProjectFilesFastBuildFile);
                 }
                 fileGenerator.Write(Template.Project.ProjectFilesEnd);
@@ -897,7 +1217,7 @@ namespace Sharpmake.Generators.VisualStudio
         )
         {
             // write [].vcxproj.filters
-            var fileGenerator = new FileGenerator(resolver);
+            var fileGenerator = new XmlFileGenerator(resolver);
             using (fileGenerator.Declare("toolsVersion", context.DevelopmentEnvironmentsRange.MinDevEnv.GetVisualProjectToolsVersionString()))
             {
                 fileGenerator.Write(Vcxproj.Template.Project.Filers.Begin);
@@ -991,9 +1311,14 @@ namespace Sharpmake.Generators.VisualStudio
                 skipFiles.Add(projectFiltersFileInfo.FullName);
         }
 
-        private void GenerateFilesSection(IVcxprojGenerationContext context, IFileGenerator fileGenerator, IList<string> generatedFiles, IList<string> skipFiles)
+        private void GenerateFilesSection(
+            IVcxprojGenerationContext context,
+            Dictionary<Project.Configuration, Options.ExplicitOptions> options,
+            IFileGenerator fileGenerator,
+            IList<string> generatedFiles,
+            IList<string> skipFiles
+        )
         {
-            var platformVcxproj = PlatformRegistry.Get<IPlatformVcxproj>(context.Configuration.Platform);
             string filtersFileName = context.ProjectPath + ProjectExtension + ProjectFilterExtension;
             string copyDependenciesFileName = context.ProjectPath + CopyDependenciesExtension;
             string relativeCopyDependenciesFileName = Util.PathGetRelative(context.ProjectDirectory, copyDependenciesFileName, false);
@@ -1006,8 +1331,10 @@ namespace Sharpmake.Generators.VisualStudio
             List<ProjectFile> sourceFiles = new List<ProjectFile>();
             List<ProjectFile> NatvisFiles = new List<ProjectFile>();
             List<ProjectFile> PRIFiles = new List<ProjectFile>();
+            List<ProjectFile> NoneFiles = new List<ProjectFile>();
             List<ProjectFile> XResourcesReswFiles = new List<ProjectFile>();
             List<ProjectFile> XResourcesImgFiles = new List<ProjectFile>();
+            List<ProjectFile> customBuildFiles = new List<ProjectFile>();
 
             foreach (string file in context.Project.NatvisFiles)
             {
@@ -1015,10 +1342,10 @@ namespace Sharpmake.Generators.VisualStudio
                 NatvisFiles.Add(natvisFile);
             }
 
-            foreach (string file in context.Project.PRIFiles)
+            foreach (string file in context.Project.NoneFiles)
             {
                 ProjectFile priFile = new ProjectFile(context, file);
-                PRIFiles.Add(priFile);
+                NoneFiles.Add(priFile);
             }
 
             foreach (string file in projectFiles)
@@ -1028,6 +1355,24 @@ namespace Sharpmake.Generators.VisualStudio
             }
 
             allFiles.Sort((ProjectFile l, ProjectFile r) => { return string.Compare(l.FileNameProjectRelative, r.FileNameProjectRelative, StringComparison.InvariantCulture); });
+
+            // Gather files with custom build steps.
+            var configurationCustomFileBuildSteps = new Dictionary<Project.Configuration, Dictionary<string, CombinedCustomFileBuildStep>>();
+            Strings configurationCustomBuildFiles = new Strings();
+            foreach (Project.Configuration config in context.ProjectConfigurations)
+            {
+                using (fileGenerator.Resolver.NewScopedParameter("project", context.Project))
+                using (fileGenerator.Resolver.NewScopedParameter("config", config))
+                using (fileGenerator.Resolver.NewScopedParameter("target", config.Target))
+                {
+                    var customFileBuildSteps = CombineCustomFileBuildSteps(context.ProjectDirectory, fileGenerator.Resolver, config.CustomFileBuildSteps.Where(step => step.Filter != Project.Configuration.CustomFileBuildStep.ProjectFilter.BFFOnly));
+                    configurationCustomFileBuildSteps.Add(config, customFileBuildSteps);
+                    foreach (var customBuildSetup in customFileBuildSteps)
+                    {
+                        configurationCustomBuildFiles.Add(customBuildSetup.Key);
+                    }
+                }
+            }
 
             // type -> files
             var customSourceFiles = new Dictionary<string, List<ProjectFile>>();
@@ -1043,6 +1388,10 @@ namespace Sharpmake.Generators.VisualStudio
                         customSourceFiles[type] = files;
                     }
                     files.Add(projectFile);
+                }
+                else if (configurationCustomBuildFiles.Contains(projectFile.FileNameProjectRelative))
+                {
+                    customBuildFiles.Add(projectFile);
                 }
                 else if (context.Project.SourceFilesCompileExtensions.Contains(projectFile.FileExtension) ||
                          (String.Compare(projectFile.FileExtension, ".rc", StringComparison.OrdinalIgnoreCase) == 0))
@@ -1102,6 +1451,45 @@ namespace Sharpmake.Generators.VisualStudio
             }
             fileGenerator.Write(Template.Project.ProjectFilesEnd);
 
+            if (customBuildFiles.Count > 0)
+            {
+                // Write custom build steps
+                fileGenerator.Write(Template.Project.ProjectFilesBegin);
+
+                foreach (ProjectFile file in customBuildFiles)
+                {
+                    using (fileGenerator.Declare("file", file.FileNameProjectRelative))
+                    using (fileGenerator.Declare("filetype", FileGeneratorUtilities.RemoveLineTag))
+                    {
+                        fileGenerator.Write(Template.Project.ProjectFilesCustomBuildBegin);
+
+                        foreach (Project.Configuration conf in context.ProjectConfigurations)
+                        {
+                            CombinedCustomFileBuildStep buildStep;
+                            if (configurationCustomFileBuildSteps[conf].TryGetValue(file.FileNameProjectRelative, out buildStep))
+                            {
+                                using (fileGenerator.Declare("conf", conf))
+                                using (fileGenerator.Declare("platformName", Util.GetPlatformString(conf.Platform, conf.Project)))
+                                using (fileGenerator.Declare("description", buildStep.Description))
+                                using (fileGenerator.Declare("command", buildStep.Commands))
+                                using (fileGenerator.Declare("inputs", buildStep.AdditionalInputs))
+                                using (fileGenerator.Declare("outputs", buildStep.Outputs))
+                                {
+                                    fileGenerator.Write(Template.Project.ProjectFilesCustomBuildDescription);
+                                    fileGenerator.Write(Template.Project.ProjectFilesCustomBuildCommand);
+                                    fileGenerator.Write(Template.Project.ProjectFilesCustomBuildInputs);
+                                    fileGenerator.Write(Template.Project.ProjectFilesCustomBuildOutputs);
+                                }
+                            }
+                        }
+
+                        fileGenerator.Write(Template.Project.ProjectFilesCustomBuildEnd);
+                    }
+                }
+
+                fileGenerator.Write(Template.Project.ProjectFilesEnd);
+            }
+
             // Write natvis files
             if (context.Project.NatvisFiles.Count > 0 && context.ProjectConfigurations.Any(conf => conf.Target.HaveFragment<DevEnv>() && conf.Target.GetFragment<DevEnv>() >= DevEnv.vs2015))
             {
@@ -1119,12 +1507,26 @@ namespace Sharpmake.Generators.VisualStudio
             if (context.Project.PRIFiles.Count > 0)
             {
                 fileGenerator.Write(Template.Project.ProjectFilesBegin);
-                foreach (string file in context.Project.PRIFiles)
+                foreach (string file in context.Project.PRIFiles.SortedValues)
+                {
+                    ProjectFile priFile = new ProjectFile(context, file);
+                    PRIFiles.Add(priFile);
+                    writtenPRIFiles.Add(priFile.FileNameProjectRelative);
+                    using (fileGenerator.Declare("file", priFile))
+                        fileGenerator.Write(Template.Project.ProjectFilesPRIResources);
+                }
+                fileGenerator.Write(Template.Project.ProjectFilesEnd);
+            }
+
+            // Write None files
+            if (context.Project.NoneFiles.Count > 0)
+            {
+                fileGenerator.Write(Template.Project.ProjectFilesBegin);
+                foreach (string file in context.Project.NoneFiles)
                 {
                     ProjectFile projectFile = new ProjectFile(context, file);
-                    writtenPRIFiles.Add(projectFile.FileNameProjectRelative);
                     using (fileGenerator.Declare("file", projectFile))
-                        fileGenerator.Write(Template.Project.ProjectFilesPRIResources);
+                        fileGenerator.Write(Template.Project.ProjectFilesNone);
                 }
                 fileGenerator.Write(Template.Project.ProjectFilesEnd);
             }
@@ -1195,6 +1597,7 @@ namespace Sharpmake.Generators.VisualStudio
                             Project.Configuration conf = context.ProjectConfigurations[i];
                             List<ProjectFile> compiledFiles = configurationCompiledFiles[i];
 
+                            bool hasPrecomp = !string.IsNullOrEmpty(conf.PrecompSource) && !string.IsNullOrEmpty(conf.PrecompHeader);
                             bool isPrecompSource = !string.IsNullOrEmpty(conf.PrecompSource) && file.FileName.EndsWith(conf.PrecompSource, StringComparison.OrdinalIgnoreCase);
                             bool isDontUsePrecomp = conf.PrecompSourceExclude.Contains(file.FileName) ||
                                                     conf.PrecompSourceExcludeFolders.Any(folder => file.FileName.StartsWith(folder, StringComparison.OrdinalIgnoreCase)) ||
@@ -1211,7 +1614,9 @@ namespace Sharpmake.Generators.VisualStudio
                             bool isCompileAsCLRFile = conf.ResolvedSourceFilesWithCompileAsCLROption.Contains(file.FileName);
                             bool isCompileAsNonCLRFile = conf.ResolvedSourceFilesWithCompileAsNonCLROption.Contains(file.FileName);
                             bool objsInSubdirectories = conf.ObjectFileName != null && !isResource;
+                            bool isExcludeFromGenerateXmlDocumentation = conf.ResolvedSourceFilesGenerateXmlDocumentationExclude.Contains(file.FileName);
 
+                            var platformVcxproj = PlatformRegistry.Get<IPlatformVcxproj>(conf.Platform);
                             if (isPrecompSource && platformVcxproj.ExcludesPrecompiledHeadersFromBuild)
                                 isExcludeFromBuild = true;
                             if (!isExcludeFromBuild && !isResource)
@@ -1241,7 +1646,7 @@ namespace Sharpmake.Generators.VisualStudio
                             haveFileOptions = haveFileOptions ||
                                               isExcludeFromBuild ||
                                               isPrecompSource ||
-                                              isDontUsePrecomp ||
+                                              (isDontUsePrecomp && hasPrecomp) ||
                                               isBlobFileDefine ||
                                               isResourceFileDefine ||
                                               isCompileAsCFile ||
@@ -1302,9 +1707,23 @@ namespace Sharpmake.Generators.VisualStudio
                                         {
                                             fileGenerator.Write(Template.Project.ProjectFilesSourcePrecompCreate);
                                         }
-                                        else if (isDontUsePrecomp)
+                                        else if (isDontUsePrecomp && hasPrecomp)
                                         {
                                             fileGenerator.Write(Template.Project.ProjectFilesSourcePrecompNotUsing);
+
+                                            // in case we are using the LLVM toolchain, the PCH was added
+                                            // as force include globally for the conf, so we need
+                                            // to use the forced include vanilla list that we prepared
+                                            var optionsForConf = options[conf];
+                                            if (optionsForConf.ContainsKey("ForcedIncludeFilesVanilla"))
+                                            {
+                                                // Note: faster to test that the options array has the
+                                                // vanilla list, as we only add it in case we use LLVM,
+                                                // but we could also have tested
+                                                // Options.GetObject<Options.Vc.General.PlatformToolset>(conf).IsLLVMToolchain()
+                                                using (fileGenerator.Declare("options", optionsForConf))
+                                                    fileGenerator.Write(Template.Project.ProjectFilesForcedIncludeVanilla);
+                                            }
                                         }
 
                                         if (consumeWinRTExtensions)
@@ -1331,6 +1750,11 @@ namespace Sharpmake.Generators.VisualStudio
                                             {
                                                 fileGenerator.Write(Template.Project.ProjectFilesSourceObjectFileName);
                                             }
+                                        }
+
+                                        if (isExcludeFromGenerateXmlDocumentation)
+                                        {
+                                            fileGenerator.Write(Template.Project.ProjectFilesSourceExcludeGenerateXmlDocumentation);
                                         }
                                     }
                                 }
@@ -1394,9 +1818,37 @@ namespace Sharpmake.Generators.VisualStudio
                 }
             }
 
+            var copyDependenciesBuildStepDictionary = new Dictionary<Project.Configuration, Project.Configuration.FileCustomBuild>();
+            foreach (var conf in context.ProjectConfigurations)
+            {
+                if (conf.IsFastBuild) // copies handled in bff
+                    continue;
+
+                if (conf.Output != Project.Configuration.OutputType.Exe && !conf.ExecuteTargetCopy)
+                    continue;
+
+                var copies = ProjectOptionsGenerator.ConvertPostBuildCopiesToRelative(conf, context.ProjectDirectory);
+                if (!copies.Any())
+                    continue;
+
+                var copyDependenciesBuildStep = copyDependenciesBuildStepDictionary.GetValueOrAdd(conf, new Project.Configuration.FileCustomBuild("Copy files to output paths..."));
+                if (conf.CopyDependenciesBuildStep != null)
+                    copyDependenciesBuildStep = conf.CopyDependenciesBuildStep;
+
+                foreach (var copy in copies)
+                {
+                    var sourceFile = copy.Key;
+                    var destinationFolder = copy.Value;
+
+                    copyDependenciesBuildStep.CommandLines.Add(conf.CreateTargetCopyCommand(sourceFile, destinationFolder, context.ProjectDirectory));
+                    copyDependenciesBuildStep.Inputs.Add(sourceFile);
+                    copyDependenciesBuildStep.Outputs.Add(Path.Combine(destinationFolder, Path.GetFileName(sourceFile)));
+                }
+            }
+
             // Write the "copy dependencies" build step (as a custom build tool on a dummy file, to make sure the copy is always done when needed)
-            bool hasDependenciesToCopy = context.ProjectConfigurations.Any(conf => conf.CopyDependenciesBuildStep != null);
-            var dependenciesFileGenerator = new FileGenerator(fileGenerator.Resolver); // borrowing resolver
+            bool hasDependenciesToCopy = copyDependenciesBuildStepDictionary.Any();
+            var dependenciesFileGenerator = new XmlFileGenerator(fileGenerator.Resolver); // borrowing resolver
             if (hasDependenciesToCopy)
             {
                 fileGenerator.Write(Template.Project.ProjectFilesEnd);
@@ -1407,12 +1859,10 @@ namespace Sharpmake.Generators.VisualStudio
                 {
                     fileGenerator.Write(Template.Project.ProjectFilesCustomBuildBegin);
 
-                    foreach (Project.Configuration conf in context.ProjectConfigurations)
+                    foreach (var pair in copyDependenciesBuildStepDictionary)
                     {
-                        Project.Configuration.FileCustomBuild copyDependencies = conf.CopyDependenciesBuildStep;
-
-                        if (copyDependencies == null)
-                            continue;
+                        var conf = pair.Key;
+                        Project.Configuration.FileCustomBuild copyDependencies = pair.Value;
 
                         using (fileGenerator.Declare("conf", conf))
                         using (fileGenerator.Declare("platformName", Util.GetPlatformString(conf.Platform, conf.Project)))
@@ -1468,20 +1918,21 @@ namespace Sharpmake.Generators.VisualStudio
             fileGenerator.Write(Template.Project.ProjectFilesEnd);
 
             // for the configuration that are fastbuild but external and requires to add the bff files
-            bool lookIfHasAnyFastBuild = false;
-            if (context.ProjectConfigurations.First().IsMainProject) // main project might mix fastbuild and non-fastbuild
-                lookIfHasAnyFastBuild = context.ProjectConfigurations.Any(x => x.IsFastBuild);
-            GenerateBffFilesSection(context, fileGenerator, generatedFiles, skipFiles, lookIfHasAnyFastBuild);
+            if (context.ProjectConfigurations.Any(x => x.IsFastBuild))
+                GenerateBffFilesSection(context, fileGenerator);
 
             var allFileLists = new List<Tuple<string, List<ProjectFile>>>();
             allFileLists.Add(new Tuple<string, List<ProjectFile>>(hasCustomBuildForAllSources ? "CustomBuild" : "ClCompile", sourceFiles));
             allFileLists.Add(new Tuple<string, List<ProjectFile>>("PRIResource", XResourcesReswFiles));
             allFileLists.Add(new Tuple<string, List<ProjectFile>>("Image", XResourcesImgFiles));
             allFileLists.Add(new Tuple<string, List<ProjectFile>>(hasCustomBuildForAllIncludes ? "CustomBuild" : "ClInclude", includeFiles));
+            allFileLists.Add(new Tuple<string, List<ProjectFile>>("CustomBuild", customBuildFiles));
             if (NatvisFiles.Count > 0)
                 allFileLists.Add(new Tuple<string, List<ProjectFile>>("Natvis", NatvisFiles));
             if (PRIFiles.Count > 0)
                 allFileLists.Add(new Tuple<string, List<ProjectFile>>("PRIResource", PRIFiles));
+            if (NoneFiles.Count > 0)
+                allFileLists.Add(new Tuple<string, List<ProjectFile>>("None", NoneFiles));
             foreach (var entry in customSourceFiles)
             {
                 allFileLists.Add(new Tuple<string, List<ProjectFile>>(entry.Key, entry.Value));

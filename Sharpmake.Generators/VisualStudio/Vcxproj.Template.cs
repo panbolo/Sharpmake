@@ -15,9 +15,9 @@ namespace Sharpmake.Generators.VisualStudio
 {
     public partial class Vcxproj
     {
-        internal static partial class Template
+        public static partial class Template
         {
-            internal static class Project
+            public static class Project
             {
                 public static string ProjectBegin =
                 @"<?xml version=""1.0"" encoding=""utf-8""?>
@@ -39,9 +39,6 @@ namespace Sharpmake.Generators.VisualStudio
     </ProjectConfiguration>
 ";
 
-                public static string ProjectDescriptionVC11TargetsPath =
-                    @"<VCTargetsPath Condition=""'$(VCTargetsPath11)' != '' and '$(VSVersion)' == '' and $(VisualStudioVersion) == ''"">$(VCTargetsPath11)</VCTargetsPath>";
-
                 public static string ProjectDescription =
 @"  <PropertyGroup Label=""Globals"">
     <ProjectGuid>{[guid]}</ProjectGuid>
@@ -53,27 +50,42 @@ namespace Sharpmake.Generators.VisualStudio
     <SccLocalPath>[sccLocalPath]</SccLocalPath>
     <SccProvider>[sccProvider]</SccProvider>
     <ProjectName>[projectName]</ProjectName>
-    <ApplicationEnvironment>title</ApplicationEnvironment>
-    <WindowsSdkDir_10>[windowsSdkDir10]</WindowsSdkDir_10>
+";
+
+                public static string WindowsSDKOverrides =
+@"    <UCRTContentRoot>[UCRTContentRoot]</UCRTContentRoot>
+    <UniversalCRTSdkDir_10>[UniversalCRTSdkDir_10]</UniversalCRTSdkDir_10>
+    <[windowsSdkDirKey]>[windowsSdkDirValue]</[windowsSdkDirKey]>
+    <WindowsSdkDir>$([windowsSdkDirKey])</WindowsSdkDir>
     <WindowsTargetPlatformVersion>[targetPlatformVersion]</WindowsTargetPlatformVersion>
-    [vc11TargetsPath]
+";
+
+                public const string DisableRegistryUse =
+@"    <DisableRegistryUse>true</DisableRegistryUse>
+";
+
+                public static string ProjectDescriptionStartPlatformConditional =
+    @"  <PropertyGroup Label=""Globals"" Condition=""'$(Platform)'=='[platformName]'"">
 ";
 
                 public static string ProjectDescriptionEnd =
 @"  </PropertyGroup>
-  <Import Project=""$(VCTargetsPath)\Microsoft.Cpp.Default.props"" />
 ";
 
-                public static string CustomPropertiesStart =
+                public static string ImportCppDefaultProps =
+@"  <Import Project=""$(VCTargetsPath)\Microsoft.Cpp.Default.props"" />
+";
+
+                public static string PropertyGroupStart =
                 @"  <PropertyGroup>
+";
+
+                public static string PropertyGroupEnd =
+                @"  </PropertyGroup>
 ";
 
                 public static string CustomProperty =
                 @"    <[custompropertyname]>[custompropertyvalue]</[custompropertyname]>
-";
-
-                public static string CustomPropertiesEnd =
-                @"  </PropertyGroup>
 ";
 
                 public static string ProjectEnd =
@@ -92,6 +104,10 @@ namespace Sharpmake.Generators.VisualStudio
                 public static string ProjectImportedProps =
 @"    <Import Project=""[importedPropsFile]"" />
 ";
+                public static string ProjectConfigurationImportedProps =
+@"    <Import Project=""[importedPropsFile]"" Condition=""'$(Configuration)|$(Platform)'=='[conf.Name]|[platformName]'"" />
+";
+
                 public static string ProjectImportedPropsEnd =
 @"  </ImportGroup>
 ";
@@ -124,6 +140,10 @@ namespace Sharpmake.Generators.VisualStudio
 @"    <Import Project=""[importedTargetsFile]"" />
 ";
 
+                public static string ProjectConfigurationImportedTargets =
+@"    <Import Project=""[importedTargetsFile]"" Condition=""'$(Configuration)|$(Platform)'=='[conf.Name]|[platformName]'"" />
+";
+
                 public static string ProjectTargetsEnd =
 @"  </ImportGroup>
 ";
@@ -131,7 +151,7 @@ namespace Sharpmake.Generators.VisualStudio
                 public static string ProjectConfigurationsResourceCompile =
                 @"    <ResourceCompile>[options.ResourceCompileTag]
       <PreprocessorDefinitions>[options.ResourcePreprocessorDefinitions];%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>[options.ResourceAdditionalIncludeDirectories];%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>[options.AdditionalResourceIncludeDirectories];%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ShowProgress>[options.ResourceCompilerShowProgress]</ShowProgress>
     </ResourceCompile>[options.ResourceCompileTag]
 ";
@@ -211,12 +231,17 @@ namespace Sharpmake.Generators.VisualStudio
 
                 public static string ProjectFilesResourceBegin =
                 @"    <ResourceCompile Include=""[file.FileNameProjectRelative]""";
-                
+
                 public static string ProjectFilesPRIResources =
                 @"    <PRIResource Include=""[file.FileNameProjectRelative]"">
       <FileType>Document</FileType>
     </PRIResource>
 ";
+
+                public static string ProjectFilesNone =
+                @"    <None Include=""[file.FileNameProjectRelative]"" />
+";
+
                 public static string ProjectFilesCustomSourceBegin =
                 @"    <[type] Include=""[file.FileNameProjectRelative]""";
 
@@ -290,6 +315,10 @@ namespace Sharpmake.Generators.VisualStudio
                 @"      <PrecompiledHeader Condition=""'$(Configuration)|$(Platform)'=='[conf.Name]|[platformName]'"">NotUsing</PrecompiledHeader>
 ";
 
+                public static string ProjectFilesForcedIncludeVanilla =
+                @"      <ForcedIncludeFiles Condition=""'$(Configuration)|$(Platform)'=='[conf.Name]|[platformName]'"">[options.ForcedIncludeFilesVanilla]</ForcedIncludeFiles>
+";
+
                 public static string ProjectFilesSourceExcludeFromBuild =
                 @"      <ExcludedFromBuild Condition=""'$(Configuration)|$(Platform)'=='[conf.Name]|[platformName]'"">true</ExcludedFromBuild>
 ";
@@ -321,6 +350,10 @@ namespace Sharpmake.Generators.VisualStudio
 ";
                 public static string ProjectFilesSourceDefine =
                 @"      <PreprocessorDefinitions Condition=""'$(Configuration)|$(Platform)'=='[conf.Name]|[platformName]'"">[ProjectFilesSourceDefine];%(PreprocessorDefinitions)</PreprocessorDefinitions>
+";
+
+                public static string ProjectFilesSourceExcludeGenerateXmlDocumentation =
+                @"      <GenerateXMLDocumentationFiles Condition=""'$(Configuration)|$(Platform)'=='[conf.Name]|[platformName]'"">false</GenerateXMLDocumentationFiles>
 ";
 
                 public static string SingleReferenceByName =
@@ -387,7 +420,7 @@ namespace Sharpmake.Generators.VisualStudio
 ";
 
                     public static string FileWithDependencyFilter =
-@"    <CustomBuild Include=""[fileName]""/>
+@"    <CustomBuild Include=""[fileName]"" />
 ";
 
                     public static string Filter =

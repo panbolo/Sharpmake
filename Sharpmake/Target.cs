@@ -20,41 +20,93 @@ using System.Reflection;
 
 namespace Sharpmake
 {
-    // Mandatory
+    /// <summary>
+    /// The development environments supported by Sharpmake generators.
+    /// </summary>
+    /// <remarks>
+    /// This fragment is mandatory in every target.
+    /// </remarks>
     [Fragment, Flags]
     public enum DevEnv
     {
+        /// <summary>
+        /// Visual Studio 2010.
+        /// </summary>
         vs2010 = 1 << 0,
+
+        /// <summary>
+        /// Visual Studio 2012
+        /// </summary>
         vs2012 = 1 << 1,
+
+        /// <summary>
+        /// Visual Studio 2013
+        /// </summary>
         vs2013 = 1 << 2,
+
+        /// <summary>
+        /// Visual Studio 2015
+        /// </summary>
         vs2015 = 1 << 3,
+
+        /// <summary>
+        /// Visual Studio 2017
+        /// </summary>
         vs2017 = 1 << 4,
+
+        /// <summary>
+        /// iOS project with Xcode.
+        /// </summary>
         xcode4ios = 1 << 5,
+
+        /// <summary>
+        /// Eclipse.
+        /// </summary>
         eclipse = 1 << 6,
-        make = 1 << 7
+
+        /// <summary>
+        /// GNU Makefiles.
+        /// </summary>
+        make = 1 << 7,
+
+        /// <summary>
+        /// All supported Visual Studio versions.
+        /// </summary>
+        [CompositeFragment]
+        VisualStudio = vs2010 | vs2012 | vs2013 | vs2015 | vs2017
     }
 
     // Mandatory
     [Fragment, Flags]
     public enum Platform
     {
-        win32 = 1 << 0,
-        win64 = 1 << 1,
-        x360 = 1 << 4,
-        ps3 = 1 << 5,
-        ps3spu = 1 << 6,
-        durango = 1 << 7,
-        orbis = 1 << 8,
-        wiiu = 1 << 9,
-        anycpu = 1 << 10,
-        wii = 1 << 11,
-        ctr = 1 << 12,
-        ios = 1 << 13,
-        android = 1 << 14,
-        nx = 1 << 15,
-        nvshield = 1 << 16,
-        linux = 1 << 17,
-        mac = 1 << 18
+        win32      = 1 << 0,
+        win64      = 1 << 1,
+        anycpu     = 1 << 2,
+        x360       = 1 << 3,
+        durango    = 1 << 4,
+        ps3        = 1 << 5,
+        ps3spu     = 1 << 6,
+        orbis      = 1 << 7,
+        wii        = 1 << 8,
+        wiiu       = 1 << 9,
+        nx         = 1 << 10,
+        nvshield   = 1 << 11,
+        ctr        = 1 << 12,
+        ios        = 1 << 13,
+        android    = 1 << 14,
+        linux      = 1 << 15,
+        mac        = 1 << 16,
+
+        _reserved9 = 1 << 22,
+        _reserved8 = 1 << 23,
+        _reserved7 = 1 << 24,
+        _reserved6 = 1 << 25,
+        _reserved5 = 1 << 26,
+        _reserved4 = 1 << 27,
+        _reserved3 = 1 << 28,
+        _reserved2 = 1 << 29,
+        _reserved1 = 1 << 30,
     }
 
     [Fragment, Flags]
@@ -94,6 +146,9 @@ namespace Sharpmake
         v4_6 = 1 << 9,
         v4_6_1 = 1 << 10,
         v4_6_2 = 1 << 11,
+        v4_7 = 1 << 12,
+        v4_7_1 = 1 << 13,
+        v4_7_2 = 1 << 14,
     }
 
     // Optional
@@ -117,135 +172,6 @@ namespace Sharpmake
         KitsRoot10
     }
 
-    public class KitsRootPaths
-    {
-        private static Dictionary<DevEnv, KitsRootEnum> s_defaultKitsRootForDevEnv = new Dictionary<DevEnv, KitsRootEnum>();
-        private static Dictionary<KitsRootEnum, string> s_defaultKitsRoots = new Dictionary<KitsRootEnum, string>();
-
-        private static Dictionary<DevEnv, KitsRootEnum> s_useKitsRootForDevEnv = new Dictionary<DevEnv, KitsRootEnum>();
-        private static Dictionary<KitsRootEnum, string> s_kitsRoots = new Dictionary<KitsRootEnum, string>();
-
-        private static Dictionary<DotNetFramework, string> s_netFxKitsDir = new Dictionary<DotNetFramework, string>();
-
-        public static Options.Vc.General.WindowsTargetPlatformVersion WindowsTargetPlatformVersion { get; private set; } = Options.Vc.General.WindowsTargetPlatformVersion.v8_1;
-
-        private static KitsRootPaths s_kitsRootsInstance = new KitsRootPaths();
-
-        public KitsRootPaths()
-        {
-            string kitsRegistryKeyString = string.Format(@"SOFTWARE{0}\Microsoft\Windows Kits\Installed Roots",
-                Environment.Is64BitProcess ? @"\Wow6432Node" : string.Empty);
-
-            s_defaultKitsRoots[KitsRootEnum.KitsRoot] = Util.GetRegistryLocalMachineSubKeyValue(kitsRegistryKeyString, KitsRootEnum.KitsRoot.ToString(), @"C:\Program Files (x86)\Windows Kits\8.0\");
-            s_defaultKitsRoots[KitsRootEnum.KitsRoot81] = Util.GetRegistryLocalMachineSubKeyValue(kitsRegistryKeyString, KitsRootEnum.KitsRoot81.ToString(), @"C:\Program Files (x86)\Windows Kits\8.1\");
-            s_defaultKitsRoots[KitsRootEnum.KitsRoot10] = Util.GetRegistryLocalMachineSubKeyValue(kitsRegistryKeyString, KitsRootEnum.KitsRoot10.ToString(), @"C:\Program Files (x86)\Windows Kits\10\");
-
-            string netFXSdkRegistryKeyString = string.Format(@"SOFTWARE{0}\Microsoft\Microsoft SDKs\NETFXSDK",
-                Environment.Is64BitProcess ? @"\Wow6432Node" : string.Empty);
-            s_netFxKitsDir[DotNetFramework.v4_6] = Util.GetRegistryLocalMachineSubKeyValue(netFXSdkRegistryKeyString + @"\" + DotNetFramework.v4_6.ToVersionString(), "KitsInstallationFolder", @"C:\Program Files (x86)\Windows Kits\NETFXSDK\4.6\");
-            s_netFxKitsDir[DotNetFramework.v4_6_1] = Util.GetRegistryLocalMachineSubKeyValue(netFXSdkRegistryKeyString + @"\" + DotNetFramework.v4_6_1.ToVersionString(), "KitsInstallationFolder", @"C:\Program Files (x86)\Windows Kits\NETFXSDK\4.6.1\");
-
-            s_defaultKitsRootForDevEnv[DevEnv.vs2012] = KitsRootEnum.KitsRoot;
-            s_defaultKitsRootForDevEnv[DevEnv.vs2013] = KitsRootEnum.KitsRoot81;
-            s_defaultKitsRootForDevEnv[DevEnv.vs2015] = KitsRootEnum.KitsRoot81;
-            s_defaultKitsRootForDevEnv[DevEnv.vs2017] = KitsRootEnum.KitsRoot10;
-        }
-
-        public static string GetRoot(KitsRootEnum kitsRoot)
-        {
-            if (s_kitsRootsInstance == null)
-                throw new Error();
-
-            if (s_kitsRoots.ContainsKey(kitsRoot))
-                return s_kitsRoots[kitsRoot];
-
-            if (s_defaultKitsRoots.ContainsKey(kitsRoot))
-                return s_defaultKitsRoots[kitsRoot];
-
-            throw new NotImplementedException("No Root associated with " + kitsRoot.ToString());
-        }
-
-        public static string GetDefaultRoot(KitsRootEnum kitsRoot)
-        {
-            if (s_kitsRootsInstance == null)
-                throw new Error();
-
-            if (s_defaultKitsRoots.ContainsKey(kitsRoot))
-                return s_defaultKitsRoots[kitsRoot];
-
-            throw new NotImplementedException("No DefaultKitsRoots associated with " + kitsRoot.ToString());
-        }
-
-        public static void SetRoot(KitsRootEnum kitsRoot, string kitsRootPath)
-        {
-            s_kitsRoots[kitsRoot] = kitsRootPath;
-        }
-
-        public static KitsRootEnum GetUseKitsRootForDevEnv(DevEnv devEnv)
-        {
-            if (s_useKitsRootForDevEnv.ContainsKey(devEnv))
-                return s_useKitsRootForDevEnv[devEnv];
-
-            if (s_defaultKitsRootForDevEnv.ContainsKey(devEnv))
-                return s_defaultKitsRootForDevEnv[devEnv];
-
-            throw new NotImplementedException("No UseKitsRoot associated with " + devEnv.ToString());
-        }
-
-        public static bool IsDefaultKitRootPath(DevEnv devEnv)
-        {
-            KitsRootEnum kitsRoot = GetUseKitsRootForDevEnv(devEnv);
-            return GetDefaultRoot(kitsRoot) == GetRoot(kitsRoot);
-        }
-
-        public static void SetUseKitsRootForDevEnv(DevEnv devEnv, KitsRootEnum kitsRoot, Options.Vc.General.WindowsTargetPlatformVersion? windowsTargetPlatformVersion = null)
-        {
-            s_useKitsRootForDevEnv[devEnv] = kitsRoot;
-            switch (kitsRoot)
-            {
-                case KitsRootEnum.KitsRoot:
-                    if (windowsTargetPlatformVersion.HasValue)
-                        throw new Error("Unsupported setting: WindowsTargetPlatformVersion is not customizable for KitsRoot 8.0.");
-                    break;
-                case KitsRootEnum.KitsRoot81:
-                    if (windowsTargetPlatformVersion.HasValue && windowsTargetPlatformVersion.Value != Options.Vc.General.WindowsTargetPlatformVersion.v8_1)
-                        throw new Error("Unsupported setting: WindowsTargetPlatformVersion is not customizable for KitsRoot 8.1. Redundant setting will be discarded");
-                    break;
-                case KitsRootEnum.KitsRoot10:
-                    if (!windowsTargetPlatformVersion.HasValue)
-                        windowsTargetPlatformVersion = Options.Vc.General.WindowsTargetPlatformVersion.v10_0_10586_0;
-
-                    if (windowsTargetPlatformVersion.Value == Options.Vc.General.WindowsTargetPlatformVersion.v8_1)
-                        throw new Error("Inconsistent values detected: KitsRoot10 set for " + devEnv + ", but windowsTargetPlatform is set to 8.1");
-
-                    WindowsTargetPlatformVersion = windowsTargetPlatformVersion.Value;
-                    break;
-            }
-        }
-
-        public static string GetWindowsTargetPlatformVersion()
-        {
-            switch (WindowsTargetPlatformVersion)
-            {
-                case Options.Vc.General.WindowsTargetPlatformVersion.v8_1: return "8.1";
-                case Options.Vc.General.WindowsTargetPlatformVersion.v10_0_10240_0: return "10.0.10240.0";
-                case Options.Vc.General.WindowsTargetPlatformVersion.v10_0_10586_0: return "10.0.10586.0";
-                case Options.Vc.General.WindowsTargetPlatformVersion.v10_0_14393_0: return "10.0.14393.0";
-                case Options.Vc.General.WindowsTargetPlatformVersion.v10_0_15063_0: return "10.0.15063.0";
-                default:
-                    throw new ArgumentOutOfRangeException("WindowsTargetPlatformVersion");
-            }
-        }
-
-        public static string GetNETFXKitsDir(DotNetFramework dotNetFramework)
-        {
-            if (s_netFxKitsDir.ContainsKey(dotNetFramework))
-                return s_netFxKitsDir[dotNetFramework];
-
-            throw new NotImplementedException("No NETFXKitsDir associated with " + dotNetFramework.ToString());
-        }
-    }
-
     // Default Target, user may define its own if needed
     public class Target : ITarget
     {
@@ -255,6 +181,7 @@ namespace Sharpmake
         public DevEnv DevEnv;
         public OutputType OutputType;
         public DotNetFramework Framework;
+        public string FrameworkFolder { get { return Framework.ToFolderName(); } }
         public Blob Blob;
 
         public override string Name
@@ -629,6 +556,10 @@ namespace Sharpmake
                     if (enumFields[i].Attributes.HasFlag(FieldAttributes.SpecialName))
                         continue;
 
+                    // combinations of fragments are not actual fragments so skip them
+                    if (enumFields[i].GetCustomAttribute<CompositeFragmentAttribute>() != null)
+                        continue;
+
                     int enumFieldValue = (int)enumFields[i].GetRawConstantValue();
 
                     if (enumFieldValue == 0)
@@ -665,7 +596,6 @@ namespace Sharpmake
                         }
                     }
                 }
-
 
                 fragmentsType.Add(field.FieldType);
             }
@@ -932,6 +862,12 @@ namespace Sharpmake
             MinDevEnv = minDevEnv;
             MaxDevEnv = maxDevEnv;
         }
+
+        public bool Contains(DevEnv devEnv)
+        {
+            return (MinDevEnv <= devEnv) && (devEnv <= MaxDevEnv);
+        }
+
         public DevEnv MinDevEnv;
         public DevEnv MaxDevEnv;
     }

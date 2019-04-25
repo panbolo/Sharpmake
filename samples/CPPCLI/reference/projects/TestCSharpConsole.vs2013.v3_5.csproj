@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.5" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -46,7 +46,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="clrcppproj.vs2013.win32.v3_5.vcxproj">
-      <Project>{89233761-D1E9-4369-2571-CF68DA9B2BA5}</Project>
+      <Project>{89233761-d1e9-4369-2571-cf68da9b2ba5}</Project>
       <Name>CLRCPPProj</Name>
     </ProjectReference>
   </ItemGroup>
