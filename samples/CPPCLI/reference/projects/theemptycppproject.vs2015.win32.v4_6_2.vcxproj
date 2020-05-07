@@ -16,6 +16,8 @@
     <RootNamespace>theEmptyCPPProject</RootNamespace>
     <ProjectName>theEmptyCPPProject</ProjectName>
   </PropertyGroup>
+  <PropertyGroup Label="Globals">
+  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>StaticLibrary</ConfigurationType>
@@ -105,7 +107,6 @@
       <CompileAs>Default</CompileAs>
       <ProgramDatabaseFileName>temp\vs2015\win32\noblob_msbuild_vs2015_v4_6_2_debug_dll_win32\theemptycppproject_compiler.pdb</ProgramDatabaseFileName>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <ShowIncludes>false</ShowIncludes>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -114,14 +115,8 @@
     </Link>
     <Lib>
       <TargetMachine>MachineX86</TargetMachine>
-    </Lib>
-    <Lib>
-      <SubSystem>
-      </SubSystem>
-    </Lib>
-    <Lib>
+      <SubSystem/>
       <LinkTimeCodeGeneration>false</LinkTimeCodeGeneration>
-      <AdditionalOptions></AdditionalOptions>
       <OutputFile>output\win32\debug\theemptycppproject.lib</OutputFile>
     </Lib>
   </ItemDefinitionGroup>
@@ -173,7 +168,6 @@
       <CompileAs>Default</CompileAs>
       <ProgramDatabaseFileName>temp\vs2015\win32\noblob_msbuild_vs2015_v4_6_2_release_dll_win32\theemptycppproject_compiler.pdb</ProgramDatabaseFileName>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <ShowIncludes>false</ShowIncludes>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -182,14 +176,8 @@
     </Link>
     <Lib>
       <TargetMachine>MachineX86</TargetMachine>
-    </Lib>
-    <Lib>
-      <SubSystem>
-      </SubSystem>
-    </Lib>
-    <Lib>
+      <SubSystem/>
       <LinkTimeCodeGeneration>false</LinkTimeCodeGeneration>
-      <AdditionalOptions></AdditionalOptions>
       <OutputFile>output\win32\release\theemptycppproject.lib</OutputFile>
     </Lib>
   </ItemDefinitionGroup>

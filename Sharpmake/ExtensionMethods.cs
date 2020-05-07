@@ -19,7 +19,7 @@ using System.Linq;
 
 namespace Sharpmake
 {
-    public static partial class ExtensionMethods
+    public static class ExtensionMethods
     {
         public static bool IsPC(this Platform platform)
         {
@@ -70,8 +70,22 @@ namespace Sharpmake
                     return "4.7.1";
                 case DotNetFramework.v4_7_2:
                     return "4.7.2";
+                case DotNetFramework.netcore1_0:
+                    return "netcoreapp1.0";
+                case DotNetFramework.netcore1_1:
+                    return "netcoreapp1.1";
+                case DotNetFramework.netcore2_0:
+                    return "netcoreapp2.0";
+                case DotNetFramework.netcore2_1:
+                    return "netcoreapp2.1";
+                case DotNetFramework.netcore2_2:
+                    return "netcoreapp2.2";
+                case DotNetFramework.netcore3_0:
+                    return "netcoreapp3.0";
+                case DotNetFramework.netcore3_1:
+                    return "netcoreapp3.1";
                 default:
-                    throw new ArgumentOutOfRangeException("framework");
+                    throw new ArgumentOutOfRangeException(nameof(framework));
             }
         }
 
@@ -103,9 +117,28 @@ namespace Sharpmake
                     return "net471";
                 case DotNetFramework.v4_7_2:
                     return "net472";
+                case DotNetFramework.netcore1_0:
+                    return "netcoreapp1.0";
+                case DotNetFramework.netcore1_1:
+                    return "netcoreapp1.1";
+                case DotNetFramework.netcore2_0:
+                    return "netcoreapp2.0";
+                case DotNetFramework.netcore2_1:
+                    return "netcoreapp2.1";
+                case DotNetFramework.netcore2_2:
+                    return "netcoreapp2.2";
+                case DotNetFramework.netcore3_0:
+                    return "netcoreapp3.0";
+                case DotNetFramework.netcore3_1:
+                    return "netcoreapp3.1";
                 default:
-                    throw new ArgumentOutOfRangeException("framework");
+                    throw new ArgumentOutOfRangeException(nameof(framework));
             }
+        }
+
+        public static bool IsDotNetCore(this DotNetFramework framework)
+        {
+            return (0 != (framework & DotNetFramework.all_netcore));
         }
 
         public static string GetVisualProjectToolsVersionString(this DevEnv visualVersion)
@@ -217,10 +250,13 @@ namespace Sharpmake
             //       allocated on the stack. That should be faster here.
             string visualStudioDirectory = s_visualStudioDirectories.GetOrAdd(Tuple.Create(visualVersion, ignoreVisualStudioPathOverride), devEnv =>
             {
-                // First check if the visual studio path is overriden from default value.
-                string pathOverride;
-                if (s_visualStudioDirOverrides.TryGetValue(visualVersion, out pathOverride))
-                    return pathOverride;
+                if (!ignoreVisualStudioPathOverride)
+                {
+                    // First check if the visual studio path is overridden from default value.
+                    string pathOverride;
+                    if (s_visualStudioDirOverrides.TryGetValue(visualVersion, out pathOverride))
+                        return pathOverride;
+                }
 
                 string installDir = Util.GetVisualStudioInstallPathFromQuery(visualVersion);
                 if (string.IsNullOrEmpty(installDir))
@@ -272,24 +308,42 @@ namespace Sharpmake
 
                     case DevEnv.vs2017:
                     case DevEnv.vs2019:
-                        string compilerVersion = visualVersion.GetDefaultCompilerVersion(); // default fallback
+                        return Path.Combine(vsDir, @"VC\Tools\MSVC", visualVersion.GetVisualStudioVCToolsVersion().ToString());
+                }
+                throw new ArgumentOutOfRangeException("VS version not recognized " + visualVersion);
+            });
+
+            return visualStudioVCRootPath;
+        }
+
+        private static readonly ConcurrentDictionary<DevEnv, Version> s_visualStudioVCToolsVersionCache = new ConcurrentDictionary<DevEnv, Version>();
+        public static Version GetVisualStudioVCToolsVersion(this DevEnv visualVersion)
+        {
+            Version version = s_visualStudioVCToolsVersionCache.GetOrAdd(visualVersion, devEnv =>
+            {
+                string vsDir = visualVersion.GetVisualStudioDir();
+                switch (visualVersion)
+                {
+                    case DevEnv.vs2017:
+                    case DevEnv.vs2019:
+                        string versionString = visualVersion.GetDefaultCompilerVersion(); // default fallback
                         try
                         {
                             string toolchainFile = Path.Combine(vsDir, "VC", "Auxiliary", "Build", "Microsoft.VCToolsVersion.default.txt");
                             if (File.Exists(toolchainFile))
                             {
                                 using (StreamReader file = new StreamReader(toolchainFile))
-                                    compilerVersion = file.ReadLine().Trim();
+                                    versionString = file.ReadLine().Trim();
                             }
                         }
                         catch { }
 
-                        return Path.Combine(vsDir, @"VC\Tools\MSVC", compilerVersion);
+                        return new Version(versionString);
                 }
                 throw new ArgumentOutOfRangeException("VS version not recognized " + visualVersion);
             });
 
-            return visualStudioVCRootPath;
+            return version;
         }
 
         public static string GetVisualStudioBinPath(this DevEnv visualVersion, Platform platform)
@@ -535,7 +589,12 @@ namespace Sharpmake
 
         public static string GetCommonToolsPath(this DevEnv visualVersion)
         {
-            return Path.Combine(GetVisualStudioDir(visualVersion), "Common7\\Tools");
+            return visualVersion.GetCommonToolsPath(ignoreVisualStudioPathOverride: false);
+        }
+
+        public static string GetCommonToolsPath(this DevEnv visualVersion, bool ignoreVisualStudioPathOverride)
+        {
+            return Path.Combine(GetVisualStudioDir(visualVersion, ignoreVisualStudioPathOverride), "Common7\\Tools");
         }
 
         public static string ToVersionString(this Options.Vc.General.WindowsTargetPlatformVersion windowsTargetPlatformVersion)
@@ -551,6 +610,7 @@ namespace Sharpmake
                 case Options.Vc.General.WindowsTargetPlatformVersion.v10_0_17134_0: return "10.0.17134.0";
                 case Options.Vc.General.WindowsTargetPlatformVersion.v10_0_17763_0: return "10.0.17763.0";
                 case Options.Vc.General.WindowsTargetPlatformVersion.v10_0_18362_0: return "10.0.18362.0";
+                case Options.Vc.General.WindowsTargetPlatformVersion.Latest: return "$(LatestTargetPlatformVersion)";
                 default:
                     throw new ArgumentOutOfRangeException(windowsTargetPlatformVersion.ToString());
             }

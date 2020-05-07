@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -38,11 +39,27 @@ namespace Sharpmake
             set { SetProperty(ref _isFileNameToLower, value); }
         }
 
+        public string LowerName
+        {
+            get { return _name.ToLower(); }
+        }
+
         private bool _isTargetFileNameToLower = true;                                         // Makes the ProjectName ToLower or not
         public bool IsTargetFileNameToLower
         {
             get { return _isTargetFileNameToLower; }
             set { SetProperty(ref _isTargetFileNameToLower, value); }
+        }
+
+        private ProjectTypeAttribute _sharpmakeProjectType = ProjectTypeAttribute.Unknown;
+        public ProjectTypeAttribute SharpmakeProjectType
+        {
+            get
+            {
+                Trace.Assert(_sharpmakeProjectType != ProjectTypeAttribute.Unknown);
+                return _sharpmakeProjectType;
+            }
+            internal set { _sharpmakeProjectType = value; }
         }
 
         public string ClassName { get; private set; }                                     // Project Class Name, ex: "MyProject"
@@ -79,7 +96,7 @@ namespace Sharpmake
             set { SetProperty(ref _rootPath, value); }
         }
 
-        private DependenciesCopyLocalTypes _dependenciesCopyLocal = DependenciesCopyLocalTypes.Default; //used primarely for the .Net Framework
+        private DependenciesCopyLocalTypes _dependenciesCopyLocal = DependenciesCopyLocalTypes.Default; //used primarily for the .Net Framework
         public DependenciesCopyLocalTypes DependenciesCopyLocal
         {
             get { return _dependenciesCopyLocal; }
@@ -99,7 +116,7 @@ namespace Sharpmake
         public Strings PreFilterSourceFiles { get { return _preFilterSourceFiles; } }
 
 
-        protected internal Strings SourceFilesExtensions = new Strings(".cpp", ".c", ".cc", ".h", ".inl", ".hpp", ".hh", ".asm");// All files under SourceRootPath are evaluated, if match found, it will be added to SourceFiles
+        public Strings SourceFilesExtensions = new Strings(".cpp", ".c", ".cc", ".h", ".inl", ".hpp", ".hh", ".asm");// All files under SourceRootPath are evaluated, if match found, it will be added to SourceFiles
         public Strings SourceFilesCompileExtensions = new Strings(".cpp", ".cc", ".c", ".asm");         // File that match this regex compile
         public Strings SourceFilesCPPExtensions = new Strings(".cpp", ".cc");
 
@@ -155,7 +172,60 @@ namespace Sharpmake
         public Strings NoneExtensionsCopyIfNewer = new Strings();
 
         public Strings XResourcesResw = new Strings();
-        public Strings XResourcesImg = new Strings();
+
+        public class XResourcesImgContainer : IEnumerable<string>
+        {
+            /// <summary>
+            /// Adds a new XResourcesImg path, with an optional link
+            /// </summary>
+            /// <param name="path">The path</param>
+            /// <param name="link">An optional link</param>
+            public void Add(string path, string link = null)
+            {
+                _xResourcesImg[path] = link;
+            }
+
+            public int Count => _xResourcesImg.Count;
+
+            public bool IsResolved { get; private set; } = false;
+
+            public IEnumerator<string> GetEnumerator()
+            {
+                return _xResourcesImg.Keys.GetEnumerator();
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return _xResourcesImg.Keys.GetEnumerator();
+            }
+
+            public Dictionary<string, string> GetXResourcesImg() { return _xResourcesImg; }
+
+            internal void Resolve(string sourceRootPath, Resolver resolver)
+            {
+                if (IsResolved)
+                    return;
+
+                if (_xResourcesImg.Any())
+                {
+                    var resolvedDictionary = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var xResourcePair in _xResourcesImg)
+                    {
+                        string path = resolver.Resolve(xResourcePair.Key);
+                        Util.ResolvePath(sourceRootPath, ref path);
+                        string link = resolver.Resolve(xResourcePair.Value);
+                        resolvedDictionary.Add(path, link);
+                    }
+                    _xResourcesImg = resolvedDictionary;
+                }
+
+                IsResolved = true;
+            }
+
+            private Dictionary<string, string> _xResourcesImg = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        public XResourcesImgContainer XResourcesImg = new XResourcesImgContainer();
 
         public Strings CustomPropsFiles = new Strings();  // vs2010+ .props files
         public Strings CustomTargetsFiles = new Strings();  // vs2010+ .targets files
@@ -165,6 +235,7 @@ namespace Sharpmake
 
         public Dictionary<string, string> ExtensionBuildTools = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);  // extension -> tool name
 
+        public Dictionary<string, string> PreImportCustomProperties = new Dictionary<string, string>();      // pre import properties are added before any imports to the project xml as <Key>Value</Key>
         public Dictionary<string, string> CustomProperties = new Dictionary<string, string>();      // custom properties are added to the project xml as <Key>Value</Key>
 
         public Dictionary<string, string> CustomFilterMapping = new Dictionary<string, string>();  /// maps relative source directory to a custom filter path for vcxproj.filter files
@@ -465,7 +536,7 @@ namespace Sharpmake
                         if (DebugBreaks.ShouldBreakOnSourcePath(DebugBreaks.Context.AddMatchFiles, sourceFilesAbsoluteUnsorted[i]))
                             breakMatch = true;
 
-                        // Remove .. occurences from middle of the absolute path.
+                        // Remove .. occurrences from middle of the absolute path.
                         string simplifiedPath = Util.SimplifyPath(sourceFilesAbsoluteUnsorted[i]);
                         files.Add(simplifiedPath); // TODO: remove from sourceFilesRelative if match
                     }
@@ -551,6 +622,19 @@ namespace Sharpmake
         // everything blobbed anyway.
         internal Strings ResolvedNoBlobbedSourceFiles = new Strings();  // all source excluded from by [project.Name]_xyz.blob.cpp
 
+        public HashSet<string> GetAllConfigurationBuildExclude(IEnumerable<Configuration> configurations)
+        {
+            HashSet<string> result = new HashSet<string>();
+            result.UnionWith(ResolvedSourceFiles);
+
+            foreach (Project.Configuration conf in configurations)
+            {
+                result.IntersectWith(conf.ResolvedSourceFilesBuildExclude);
+            }
+
+            return result;
+        }
+
         public Strings GetSourceFilesForConfigurations(IEnumerable<Configuration> configurations)
         {
             // Remove blob files ?
@@ -558,16 +642,12 @@ namespace Sharpmake
             bool allNoBlobbed = true;
             bool includeBlobbedSourceFiles = true;
 
-            HashSet<string> allConfigurationBuildExclude = new HashSet<string>();
-            allConfigurationBuildExclude.UnionWith(ResolvedSourceFiles);
-
             foreach (Project.Configuration conf in configurations)
             {
                 bool isBlobbed = conf.IsBlobbed;
                 allBlobbed &= isBlobbed;
                 allNoBlobbed &= !isBlobbed;
                 includeBlobbedSourceFiles &= conf.IncludeBlobbedSourceFiles;
-                allConfigurationBuildExclude.IntersectWith(conf.ResolvedSourceFilesBuildExclude);
             }
 
             Strings result = new Strings();
@@ -580,7 +660,7 @@ namespace Sharpmake
                     result.AddRange(entry.Value.ResolvedBlobSourceFiles);
                 }
                 result.AddRange(ResolvedNoBlobbedSourceFiles);
-                result.RemoveRange(allConfigurationBuildExclude);
+                result.RemoveRange(GetAllConfigurationBuildExclude(configurations));
             }
             else if (allNoBlobbed)
             {
@@ -1091,6 +1171,12 @@ namespace Sharpmake
             return false;
         }
 
+        public virtual bool ResolveFilterPathForFile(string relativeFilePath, out string filterPath)
+        {
+            filterPath = null;
+            return false;
+        }
+
         protected virtual void ExcludeOutputFiles()
         {
         }
@@ -1379,12 +1465,21 @@ namespace Sharpmake
         internal bool Resolved { get; private set; }
         public Dictionary<string, List<Project.Configuration>> ProjectFilesMapping { get; } = new Dictionary<string, List<Configuration>>();
 
-        internal static Project CreateProject(Type projectType, List<Object> fragmentMasks)
+        public enum ProjectTypeAttribute
+        {
+            Unknown,
+            Generate,
+            Export,
+            Compile
+        }
+
+        internal static Project CreateProject(Type projectType, List<Object> fragmentMasks, ProjectTypeAttribute projectTypeAttribute)
         {
             Project project;
             try
             {
                 project = Activator.CreateInstance(projectType) as Project;
+                project.SharpmakeProjectType = projectTypeAttribute;
             }
             catch (Exception e)
             {
@@ -1394,7 +1489,7 @@ namespace Sharpmake
                 throw new Error(e, "Cannot create instances of type: {0}, make sure it's public", projectType.Name);
             }
 
-            project.Targets.AddFragmentMask(fragmentMasks.ToArray());
+            project.Targets.SetGlobalFragmentMask(fragmentMasks.ToArray());
             project.Targets.BuildTargets();
             return project;
         }
@@ -1533,7 +1628,7 @@ namespace Sharpmake
                     {
                         foreach (string folder in includeArray)
                         {
-                            if (!folder.StartsWith("$") && !includePathsExcludeFromWarningRegex.Any(regex => regex.Match(folder).Success) && !Directory.Exists(folder))
+                            if (!folder.StartsWith("$", StringComparison.Ordinal) && !includePathsExcludeFromWarningRegex.Any(regex => regex.Match(folder).Success) && !Directory.Exists(folder))
                             {
                                 ReportError($@"{conf.Project.SharpmakeCsFileName}: Warning: Folder contained in include paths doesn't exist: {folder}.", true);
                             }
@@ -1551,7 +1646,7 @@ namespace Sharpmake
                     string platformLibExtension = "." + configTasks.GetDefaultOutputExtension(Configuration.OutputType.Lib);
                     foreach (string folder in allLibraryPaths)
                     {
-                        if (!folder.StartsWith("$") && !libraryPathsExcludeFromWarningRegex.Any(regex => regex.Match(folder).Success) && !Directory.Exists(folder))
+                        if (!folder.StartsWith("$", StringComparison.Ordinal) && !libraryPathsExcludeFromWarningRegex.Any(regex => regex.Match(folder).Success) && !Directory.Exists(folder))
                         {
                             ReportError($@"{conf.Project.SharpmakeCsFileName}: Warning: Folder contained in conf.LibraryPaths doesn't exist. Folder: {folder}.", true);
                         }
@@ -1611,11 +1706,13 @@ namespace Sharpmake
             if (SourceFilesFilters != null)
                 Util.ResolvePath(SharpmakeCsPath, ref SourceFilesFilters);
 
+            XResourcesImg.Resolve(SourceRootPath, resolver);
+
             // Resolve Configuration
             foreach (Project.Configuration conf in Configurations)
                 conf.Resolve(resolver);
 
-            if (GetType().IsDefined(typeof(Generate), false))
+            if (SharpmakeProjectType == ProjectTypeAttribute.Generate)
             {
                 PreResolveSourceFiles();
                 ResolveSourceFiles(builder);
@@ -1860,6 +1957,22 @@ namespace Sharpmake
         Default
     }
 
+    public enum CSharpProjectSchema
+    {
+        NetCore,
+        NetFramework,
+        Default
+    }
+
+    public enum NetCoreSdkTypes
+    {
+        Default,
+        Web,
+        Razor,
+        Worker,
+        WindowsDesktop
+    }
+
     public class CSharpVstoProject : CSharpProject
     {
         public enum OfficeApplication
@@ -1910,8 +2023,7 @@ namespace Sharpmake
             aspNetProject.ProjectTypeGuids = CSharpProjectType.AspNetMvc5;
             aspNetProject.SourceFilesExtensions.Add(".asax");
 
-            string[] contentExtension = new[]
-            {
+            string[] contentExtension = {
                 ".cshtml", ".js", ".map",
                 ".css", ".scss",
                 ".eot", ".svg", ".ttf", ".woff", ".woff2",
@@ -2019,8 +2131,11 @@ namespace Sharpmake
         public Strings ContentExtension = new Strings();
         public Strings VsctExtension = new Strings(".vsct");
         public CSharpProjectType ProjectTypeGuids = CSharpProjectType.Default;
+        public CSharpProjectSchema ProjectSchema = CSharpProjectSchema.Default;
+        public NetCoreSdkTypes NetCoreSdkType = NetCoreSdkTypes.Default;
         public string ResourcesPath = null;
         public string ContentPath = null;
+        public string BaseIntermediateOutputPath = string.Empty;
         public string ApplicationIcon = String.Empty;
         public string ApplicationManifest = "app.manifest";
         public string ApplicationSplashScreen = string.Empty;
@@ -2058,13 +2173,19 @@ namespace Sharpmake
         public List<FileAssociationItem> FileAssociationItems = new List<FileAssociationItem>();
         public List<PublishFile> PublishFiles = new List<PublishFile>();
 
+        /// <summary>
+        /// If set to true. Will explicit the RestoreProjectStyle in the project file
+        /// </summary>
+        public bool ExplicitNugetRestoreProjectStyle = false;
+
         public bool IncludeResxAsResources = true;
         public string RootNamespace;
         public Platform? DefaultPlatform;
         public Strings EmbeddedResourceExtensions; // this is used mainly for WinForms, for WPF applications use Resources for embedded and Content for linked
         public List<WebReferenceUrl> WebReferenceUrls = new List<WebReferenceUrl>();
         public List<ComReference> ComReferences = new List<ComReference>();
-        public UniqueList<ImportProject> ImportProjects = new UniqueList<ImportProject>();
+        public List<ImportProject> PreImportProjects = new List<ImportProject>();
+        public List<ImportProject> ImportProjects = new List<ImportProject>();
         public List<CustomTargetElement> CustomTargets = new List<CustomTargetElement>();
         public List<UsingTask> UsingTasks = new List<UsingTask>();
 
@@ -2080,6 +2201,8 @@ namespace Sharpmake
         public Options.CSharp.RunPostBuildEvent RunPostBuildEvent = Options.CSharp.RunPostBuildEvent.OnBuildSuccess;
 
         public string CodeAnalysisRuleSetFileName;
+
+        public const string DefaultImportProject = @"$(MSBuildBinPath)\Microsoft.CSharp.targets";
 
         [Resolver.Resolvable]
         public class CustomTargetElement
@@ -2125,7 +2248,7 @@ namespace Sharpmake
             IsTargetFileNameToLower = false;
             ResourcesPath = RootPath + @"\Resources\";
             ContentPath = RootPath + @"\Content\";
-            ImportProjects.Add(new ImportProject { Project = @"$(MSBuildBinPath)\Microsoft.CSharp.targets" });
+            ImportProjects.Add(new ImportProject { Project = DefaultImportProject });
             ApplicationDefinitionFilenames.Add("App.xaml", "MainApplication.xaml");
 
             //Default Excludes
@@ -2168,6 +2291,33 @@ namespace Sharpmake
         {
             InitCSharpSpecifics();
         }
+
+        public static void AddCSharpSpecificPreImportProjects(List<ImportProject> importProjects, DevEnv devEnv)
+        {
+            if (devEnv >= DevEnv.vs2017)
+            {
+                importProjects.Add(new ImportProject
+                {
+                    Project = @"$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props",
+                    Condition = @"Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')"
+                });
+            }
+        }
+
+        public void AddCSharpSpecificImportProjects(List<ImportProject> importProjects, DevEnv devEnv)
+        {
+            if (ProjectTypeGuids == CSharpProjectType.Vsix)
+            {
+                importProjects.Add(new ImportProject { Project = @"$(VSToolsPath)\VSSDK\Microsoft.VsSDK.targets", Condition = @"'$(VSToolsPath)' != ''" });
+            }
+
+            if (ProjectTypeGuids == CSharpProjectType.AspNetMvc5)
+            {
+                importProjects.Add(new ImportProject { Project = @"$(VSToolsPath)\WebApplications\Microsoft.WebApplication.targets", Condition = "'$(VSToolsPath)' != ''" });
+                importProjects.Add(new ImportProject { Project = @"$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\WebApplications\Microsoft.WebApplication.targets", Condition = "false" });
+            }
+        }
+
 
         public override bool IsValidConfigurationOutputType(Configuration.OutputType outputType)
         {
@@ -2342,6 +2492,7 @@ namespace Sharpmake
         public List<PythonEnvironment> Environments = new List<PythonEnvironment>();
         public List<PythonVirtualEnvironment> VirtualEnvironments = new List<PythonVirtualEnvironment>();
         public Strings SearchPaths = new Strings();
+        public string StartupFile = String.Empty;
         public bool IsSourceFilesCaseSensitive = true;
 
         private void InitPythonSpecifics()

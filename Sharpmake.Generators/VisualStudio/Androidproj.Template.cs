@@ -61,6 +61,7 @@ namespace Sharpmake.Generators.VisualStudio
     <AndroidAPILevel>[options.AndroidAPILevel]</AndroidAPILevel>
     <OutDir>$(ProjectDir)[options.OutputDirectory]\</OutDir>
     <IntDir>[options.IntermediateDirectory]\</IntDir>
+    <TargetName>[options.OutputFile]</TargetName>
   </PropertyGroup>
 ";
 
@@ -130,6 +131,10 @@ namespace Sharpmake.Generators.VisualStudio
 
                 public const string ProjectFilesHeader =
 @"    <ClInclude Include=""[file.FileNameProjectRelative]"" />
+";
+
+                public static string ContentSimple =
+@"    <Content Include=""[file.FileNameSourceRelative]"" />
 ";
             }
         }

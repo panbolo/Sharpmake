@@ -27,7 +27,9 @@ namespace Sharpmake.Generators.VisualStudio
                 public static string ProjectBeginVs2017 =
 @"<?xml version=""1.0"" encoding=""utf-8""?>
 <Project ToolsVersion=""[toolsVersion]"" xmlns=""http://schemas.microsoft.com/developer/msbuild/2003"">
-  <Import Project=""$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props"" Condition=""Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')"" />
+";
+                public static string ProjectBeginNetCore =
+@"<Project Sdk=""[sdkVersion]"">
 ";
 
                 public static string ProjectEnd =
@@ -48,7 +50,7 @@ namespace Sharpmake.Generators.VisualStudio
     <SccProjectName>[sccProjectName]</SccProjectName>
     <SccLocalPath>[sccLocalPath]</SccLocalPath>
     <SccProvider>[sccProvider]</SccProvider>
-    <TargetFrameworkVersion>[targetFramework]</TargetFrameworkVersion>
+    <[targetFrameworkVersionString]>[targetFramework]</[targetFrameworkVersionString]>
     <FileAlignment>[options.FileAlignment]</FileAlignment>
     <IsWebBootstrapper>[options.IsWebBootstrapper]</IsWebBootstrapper>
     <ProjectTypeGuids>[projectTypeGuids]</ProjectTypeGuids>
@@ -97,6 +99,9 @@ namespace Sharpmake.Generators.VisualStudio
     <VsixType>[options.VsixType]</VsixType>
     <ConcordSDKDir>[options.ConcordSDKDir]</ConcordSDKDir>
     <AutoGenerateBindingRedirects>[options.AutoGenerateBindingRedirects]</AutoGenerateBindingRedirects>
+    <SonarQubeExclude>[options.SonarQubeExclude]</SonarQubeExclude>
+    <EnableDefaultItems>[netCoreEnableDefaultItems]</EnableDefaultItems>
+    <RestoreProjectStyle>[NugetRestoreProjectStyleString]</RestoreProjectStyle>
   </PropertyGroup>
 ";
 
@@ -117,6 +122,7 @@ namespace Sharpmake.Generators.VisualStudio
     <WarningLevel>[options.WarningLevel]</WarningLevel>
     <AllowUnsafeBlocks>[options.AllowUnsafeBlocks]</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>[options.TreatWarningsAsErrors]</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>[options.WarningsNotAsErrors]</WarningsNotAsErrors>
     <CreateVsixContainer>[options.CreateVsixContainer]</CreateVsixContainer>
     <DeployExtension>[options.DeployExtension]</DeployExtension>
     <Prefer32Bit>[options.Prefer32Bit]</Prefer32Bit>

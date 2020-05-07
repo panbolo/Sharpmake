@@ -27,7 +27,7 @@ class FunctionalTest:
             os.chdir(pwd)
 
             # Detects the path of the Sharpmake executable
-            sharpmake_path = find_target_path(os.path.join(entry_path, "bin", "release"), "Sharpmake.Application.exe")
+            sharpmake_path = find_target_path(os.path.join(entry_path, "bin"), "Sharpmake.Application.exe")
 
             write_line("Using sharpmake " + sharpmake_path)
 
@@ -50,7 +50,7 @@ class FunctionalTest:
 
             if generation_exit_code != 0:
                 return generation_exit_code
-            
+
             os.chdir(entry_path)
             return self.build(pwd)
 
@@ -67,41 +67,71 @@ class FunctionalTest:
 
 class FastBuildFunctionalTest(FunctionalTest):
 
+    def verifyCustomBuildEventsInTargetDir(self, targetDir):
+        #verify copied files exist
+        expected_copied_files = ["dummyfile_to_be_copied_to_buildoutput.txt", "main.cpp", "postbuildcopysinglefiletest.exe"]
+        for expected_file in expected_copied_files:
+            expected_file = os.path.join(targetDir, "file_copy_destination", expected_file)
+            if not os.path.isfile(expected_file):
+                write_line("Expected file does not exist: {}...".format(expected_file))
+                return 1
+
+        #verify test execution created the correct output
+        test_output = os.path.join(targetDir, "test_execution_output.txt")
+        f = open(test_output, "r")
+        if f.mode != "r":
+            write_line("Unable to open file {}...".format(test_output))
+            return 1
+
+        file_content = f.read()
+        if file_content != "Test successful.":
+            write_line("Incorrect output of test node execution: {}...".format(file_content))
+            return 1
+        
+        return 0
+
+    def verifyCustomBuildEvents(self, projectDir):
+        output_dir = os.path.join(projectDir, self.directory, "projects", "output")
+        target_dirs = ["debug_fastbuild_noblob_vs2017", "debug_fastbuild_vs2017", "release_fastbuild_noblob_vs2017", "release_fastbuild_vs2017"]
+
+        for target_dir in target_dirs:
+            target_dir = os.path.join(output_dir, target_dir)
+
+            verifyResult = self.verifyCustomBuildEventsInTargetDir(target_dir)
+            if verifyResult != 0:
+                return verifyResult
+
+        return 0
+
     def build(self, projectDir):
         entry_path = os.getcwd()
         fastBuildPath = os.path.join(entry_path, "tools", "FastBuild", "FBuild.exe");
         if not os.path.isfile(fastBuildPath):
             return -1
-        
-        os.chdir(os.path.join(projectDir, self.directory, "projects"))
 
-        return os.system(fastBuildPath + " All-Configs -vs -summary -verbose -config " + self.directory + ".bff")
+        cmd_line = fastBuildPath + " All-Configs -monitor -nosummaryonerror -clean -config " + self.directory + ".bff"
+        working_dir = os.path.join(projectDir, self.directory, "projects")
 
-class MSBuildFunctionalTest(FunctionalTest):
+        os.chdir(working_dir)
+        write_line(cmd_line)
+        write_line("Working dir: " + working_dir)
+        build_result = os.system(cmd_line)
 
-    def build(self, projectDir):
-        entry_path = os.getcwd()
-        os.chdir(os.path.join(projectDir, self.directory, "projects"))
+        if build_result != 0:
+            return build_result
 
-        return os.system("msbuild " + self.directory + ".sln")
-
-class CustomBuildFunctionalTest(FunctionalTest):
-
-    def build(self, projectDir):
-        entry_path = os.getcwd()
-        os.environ["tools"] = os.path.join(entry_path, "tools")
-        os.chdir(os.path.join(projectDir, self.directory))
-
-        return os.system("build.bat");
+        return self.verifyCustomBuildEvents(projectDir)
 
 funcTests = [
     FastBuildFunctionalTest("FastBuildFunctionalTest", "FastBuildFunctionalTest.sharpmake.cs")
 ]
 
 def find_target_path(directory, target):
-    path = os.path.abspath(os.path.join(directory, target))
-    if os.path.isfile(path):
-        return path
+    optim_tokens = ["debug", "release"]
+    for optim_token in optim_tokens:
+        path = os.path.abspath(os.path.join(directory, optim_token, target))
+        if os.path.isfile(path):
+            return path
 
     raise IOError("Cannot find " + target)
 

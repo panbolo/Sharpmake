@@ -36,6 +36,8 @@ namespace SimpleExeLibDependency
             conf.ProjectFileName = "[project.Name]_[target.DevEnv]_[target.Platform]";
             conf.ProjectPath = @"[project.SharpmakeCsPath]\projects";
 
+            conf.Options.Add(Options.Vc.Linker.TreatLinkerWarningAsErrors.Enable);
+
             conf.AddPublicDependency<LibStuffProject>(target);
         }
     }
@@ -60,7 +62,7 @@ namespace SimpleExeLibDependency
         }
     }
 
-    internal static class main
+    public static class main
     {
         [Sharpmake.Main]
         public static void SharpmakeMain(Sharpmake.Arguments arguments)

@@ -44,10 +44,10 @@ using System.Runtime.InteropServices;
 //
 // You can specify all the values or you can default the Build and Revision Numbers 
 // by using the '*' as shown below:
-[assembly: AssemblyVersion("0.9.0.0")]
+[assembly: AssemblyVersion("0.11.2.*")]
 #pragma warning disable CS7035
-[assembly: AssemblyFileVersion("0.9.0.0 (LocalBuild)")]
-#pragma warning restore 
+[assembly: AssemblyFileVersion("0.11.2.* (LocalBuild)")]
+#pragma warning restore
 
 [assembly: InternalsVisibleTo("Sharpmake.Application")]
 [assembly: InternalsVisibleTo("Sharpmake.Generators")]

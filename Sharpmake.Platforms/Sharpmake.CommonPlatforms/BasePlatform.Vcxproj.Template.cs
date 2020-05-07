@@ -18,6 +18,7 @@ namespace Sharpmake
         private const string _projectConfigurationsCompileTemplate =
             @"    <ClCompile>
       <PrecompiledHeader>[options.UsePrecompiledHeader]</PrecompiledHeader>
+      <CompileAsWinRT>[options.CompileAsWinRT]</CompileAsWinRT>
       <WarningLevel>[options.WarningLevel]</WarningLevel>
       <Optimization>[options.Optimization]</Optimization>
       <PreprocessorDefinitions>[options.PreprocessorDefinitions];%(PreprocessorDefinitions);$(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -54,6 +55,7 @@ namespace Sharpmake
       <FloatingPointModel>[options.FloatingPointModel]</FloatingPointModel>
       <FloatingPointExceptions>[options.FloatingPointExceptions]</FloatingPointExceptions>
       <CreateHotpatchableImage>false</CreateHotpatchableImage>
+      <ConformanceMode>[options.ConformanceMode]</ConformanceMode>
       <DisableLanguageExtensions>[options.DisableLanguageExtensions]</DisableLanguageExtensions>
       <TreatWChar_tAsBuiltInType>[options.TreatWChar_tAsBuiltInType]</TreatWChar_tAsBuiltInType>
       <RemoveUnreferencedCodeData>[options.RemoveUnreferencedCodeData]</RemoveUnreferencedCodeData>
@@ -77,13 +79,14 @@ namespace Sharpmake
       <ShowIncludes>[options.ShowIncludes]</ShowIncludes>
       <ForcedIncludeFiles>[options.ForcedIncludeFiles]</ForcedIncludeFiles>
       <ForcedUsingFiles>[options.ForcedUsingFiles]</ForcedUsingFiles>
+      <SupportJustMyCode>[options.SupportJustMyCode]</SupportJustMyCode>
     </ClCompile>
 ";
 
         private const string _projectConfigurationsLinkTemplate =
             @"    <Link>
       <SubSystem>[options.SubSystem]</SubSystem>
-      <GenerateDebugInformation>[options.GenerateDebugInformation]</GenerateDebugInformation>
+      <GenerateDebugInformation>[options.LinkerGenerateDebugInformation]</GenerateDebugInformation>
       <FullProgramDatabaseFile>[options.FullProgramDatabaseFile]</FullProgramDatabaseFile>
       <OutputFile>[options.OutputFile]</OutputFile>
       <ShowProgress>[options.ShowProgress]</ShowProgress>
@@ -112,11 +115,10 @@ namespace Sharpmake
       <CLRImageType>Default</CLRImageType>
       <LinkErrorReporting>PromptImmediately</LinkErrorReporting>
       <AdditionalOptions>[options.AdditionalLinkerOptions]</AdditionalOptions>
-      <AdditionalDependencies>[options.AdditionalDependencies];%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>[options.AdditionalDependencies]</AdditionalDependencies>
       <SuppressStartupBanner>[options.SuppressStartupBanner]</SuppressStartupBanner>
       <IgnoreAllDefaultLibraries>[options.IgnoreAllDefaultLibraries]</IgnoreAllDefaultLibraries>
-      <IgnoreSpecificDefaultLibraries>[options.IgnoreDefaultLibraryNames]
-      </IgnoreSpecificDefaultLibraries>
+      <IgnoreSpecificDefaultLibraries>[options.IgnoreDefaultLibraryNames]</IgnoreSpecificDefaultLibraries>
       <AssemblyDebug>[options.AssemblyDebug]</AssemblyDebug>
       <HeapReserveSize>[options.HeapReserveSize]</HeapReserveSize>
       <HeapCommitSize>[options.HeapCommitSize]</HeapCommitSize>
@@ -126,6 +128,7 @@ namespace Sharpmake
       <MapFileName>[options.MapFileName]</MapFileName>
       <ImportLibrary>[options.ImportLibrary]</ImportLibrary>
       <FunctionOrder>[options.FunctionOrder]</FunctionOrder>
+      <ForceFileOutput>[options.ForceFileOutput]</ForceFileOutput>
       <ModuleDefinitionFile>[options.ModuleDefinitionFile]</ModuleDefinitionFile>
       <DelayLoadDLLs>[options.DelayLoadedDLLs]</DelayLoadDLLs>
       <BaseAddress>[options.BaseAddress]</BaseAddress>
@@ -133,29 +136,27 @@ namespace Sharpmake
       <AllowIsolation>[options.AllowIsolation]</AllowIsolation>
       <GenerateWindowsMetadata>[options.GenerateWindowsMetadata]</GenerateWindowsMetadata>
       <WindowsMetadataFile>[options.WindowsMetadataFile]</WindowsMetadataFile>
+      <TreatLinkerWarningAsErrors>[options.TreatLinkerWarningAsErrors]</TreatLinkerWarningAsErrors>
     </Link>
 ";
 
         private const string _projectConfigurationsStaticLinkTemplate =
             @"    <Link>
-      <GenerateDebugInformation>[options.GenerateDebugInformation]</GenerateDebugInformation>
+      <GenerateDebugInformation>[options.LinkerGenerateDebugInformation]</GenerateDebugInformation>
       <FullProgramDatabaseFile>[options.FullProgramDatabaseFile]</FullProgramDatabaseFile>
       <EnableCOMDATFolding>[options.EnableCOMDATFolding]</EnableCOMDATFolding>
       <OptimizeReferences>[options.OptimizeReferences]</OptimizeReferences>
+      <TreatLinkerWarningAsErrors>[options.TreatLinkerWarningAsErrors]</TreatLinkerWarningAsErrors>
     </Link>
     <Lib>
       <TargetMachine>[options.TargetMachine]</TargetMachine>
-    </Lib>
-    <Lib>
-      <SubSystem>
-      </SubSystem>
-    </Lib>
-    <Lib>
+      <SubSystem/>
       <LinkTimeCodeGeneration>[options.LinkTimeCodeGeneration]</LinkTimeCodeGeneration>
-      <AdditionalOptions>[options.AdditionalLinkerOptions]</AdditionalOptions>
+      <AdditionalOptions>[options.AdditionalLibrarianOptions]</AdditionalOptions>
+      <TreatLibWarningAsErrors>[options.TreatLibWarningAsErrors]</TreatLibWarningAsErrors>
       <OutputFile>[options.OutputFile]</OutputFile>
       <AdditionalLibraryDirectories>[options.AdditionalLibraryDirectories]</AdditionalLibraryDirectories>
-      <AdditionalDependencies>[options.AdditionalDependencies];%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>[options.AdditionalDependencies]</AdditionalDependencies>
     </Lib>
 ";
 
@@ -181,6 +182,7 @@ namespace Sharpmake
     <TrackFileAccess>[options.TrackFileAccess]</TrackFileAccess>
     <CLRSupport>[options.CLRSupport]</CLRSupport>
     <WindowsTargetPlatformVersion>[options.WindowsTargetPlatformVersion]</WindowsTargetPlatformVersion>
+    <SpectreMitigation>[options.SpectreMitigation]</SpectreMitigation>
   </PropertyGroup>
 ";
 
@@ -212,7 +214,19 @@ namespace Sharpmake
   </PropertyGroup>
 ";
 
-        // Notes: 
+        private const string _windowsSDKOverridesBegin =
+            @"  <PropertyGroup Label=""Globals"">
+    <UCRTContentRoot>[UCRTContentRoot]</UCRTContentRoot>
+    <UniversalCRTSdkDir_10>[UniversalCRTSdkDir_10]</UniversalCRTSdkDir_10>
+    <[windowsSdkDirKey]>[windowsSdkDirValue]</[windowsSdkDirKey]>
+    <WindowsSdkDir>$([windowsSdkDirKey])</WindowsSdkDir>
+    <WindowsTargetPlatformVersion>[targetPlatformVersion]</WindowsTargetPlatformVersion>
+";
+        private const string _windowsSDKOverridesEnd =
+            @"  </PropertyGroup>
+";
+
+        // Notes:
         // Clean:
         // Visual Studio automatically cleans most files from the intermediate directory as soon as the clean command is active. However, it doesn't
         // clean them all, so we manually delete everything!

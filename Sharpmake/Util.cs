@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Ubisoft Entertainment
+// Copyright (c) 2017 Ubisoft Entertainment
 // 
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ namespace Sharpmake
         }
 
         /// <summary>
-        /// Finds the first occurence of directive and returns the 
+        /// Finds the first occurrence of directive and returns the 
         /// requested param value. Ex:
         /// GetTextTemplateDirectiveParam(ttPath, "output", "extension")
         /// will match:
@@ -282,7 +282,7 @@ namespace Sharpmake
                 }
 
                 // Important note: Must imcrement _bufferLength at the same time as writing into it as otherwise if
-                // you are stepping in the debugger and ToString() is implicitely called by the debugger this could truncate the string
+                // you are stepping in the debugger and ToString() is implicitly called by the debugger this could truncate the string
                 // before the increment takes place
                 _buffer[_bufferLength++] = value;
             }
@@ -301,7 +301,7 @@ namespace Sharpmake
                 for (int i = substStringIndex; i < endLoop; ++i)
                 {
                     // Important note: Must imcrement _bufferLength at the same time as writing into it as otherwise if
-                    // you are stepping in the debugger and ToString() is implicitely called by the debugger this could truncate the string
+                    // you are stepping in the debugger and ToString() is implicitly called by the debugger this could truncate the string
                     // before the increment takes place
                     char value = str[i];
                     _buffer[_bufferLength++] = value;
@@ -581,6 +581,17 @@ namespace Sharpmake
             }
         }
 
+        internal static void ResolvePathAndFixCase(string root, ref Strings paths)
+        {
+            List<string> sortedPaths = paths.Values;
+            foreach (string path in sortedPaths)
+            {
+                string resolvedPath = Util.PathGetAbsolute(root, Util.PathMakeStandard(path));
+                string fixedCase = GetProperFilePathCapitalization(resolvedPath);
+                paths.UpdateValue(path, fixedCase);
+            }
+        }
+
         public static void ResolvePath(string root, ref OrderableStrings paths)
         {
             for (int i = 0; i < paths.Count; ++i)
@@ -631,16 +642,18 @@ namespace Sharpmake
             DirectoryInfo dirInfo = fileInfo.Directory;
             GetProperDirectoryCapitalization(dirInfo, null, ref builder);
             string properFileName = fileInfo.Name;
-            foreach (var fsInfo in dirInfo.EnumerateFileSystemInfos())
+            if (dirInfo != null && dirInfo.Exists)
             {
-                if (((fsInfo.Attributes & FileAttributes.Directory) != FileAttributes.Directory)
-                    && string.Compare(fsInfo.Name, fileInfo.Name, StringComparison.OrdinalIgnoreCase) == 0)
+                foreach (var fsInfo in dirInfo.EnumerateFileSystemInfos())
                 {
-                    properFileName = fsInfo.Name;
-                    break;
+                    if (((fsInfo.Attributes & FileAttributes.Directory) != FileAttributes.Directory)
+                        && string.Compare(fsInfo.Name, fileInfo.Name, StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        properFileName = fsInfo.Name;
+                        break;
+                    }
                 }
             }
-
             return Path.Combine(builder.ToString(), properFileName);
         }
 
@@ -1597,9 +1610,13 @@ namespace Sharpmake
                     Directory.Delete(source);
                 }
 
-                success = CreateSymbolicLink(source, target,
-                    (isDirectory ? SYMBOLIC_LINK_FLAG_DIRECTORY : SYMBOLIC_LINK_FLAG_FILE)
-                    | SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE);
+                int releaseId = int.Parse(GetRegistryLocalMachineSubKeyValue(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "ReleaseId", "0"));
+
+                int flags = isDirectory ? SYMBOLIC_LINK_FLAG_DIRECTORY : SYMBOLIC_LINK_FLAG_FILE;
+                if (releaseId >= 1703) // Verify that the Windows build is equal or above 1703, as SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE was introduced at that version. Using it on older version will cause an error 87 and symlinks won't be created
+                    flags |= SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+
+                success = CreateSymbolicLink(source, target, flags);
             }
             catch { }
             return success;
@@ -1820,7 +1837,7 @@ namespace Sharpmake
                         }
                     } while (fetched > 0);
                 }
-                catch (COMException)
+                catch (System.Runtime.InteropServices.COMException)
                 {
                     // Ignore
                 }
@@ -1834,11 +1851,10 @@ namespace Sharpmake
         /// The supported visual studio products, in order by priority in which Sharpmake will choose them.
         /// We want to block products like the standalone Team Explorer, which is in the Visual Studio
         /// family yet isn't a variant of Visual Studio proper.
-        /// 
+        ///
         /// The list of Product IDs can be found here: https://docs.microsoft.com/en-us/visualstudio/install/workload-and-component-ids
         /// </summary>
-        public static readonly string[] s_supportedVisualStudioProducts = new[]
-        {
+        private static readonly string[] s_supportedVisualStudioProducts = {
             "Microsoft.VisualStudio.Product.Enterprise",
             "Microsoft.VisualStudio.Product.Professional",
             "Microsoft.VisualStudio.Product.Community",
@@ -1862,8 +1878,12 @@ namespace Sharpmake
             }
         }
 
-        public static List<VsInstallation> GetVisualStudioInstallationsFromQuery(DevEnv visualVersion, bool allowPrereleaseVersions = false,
-            string[] requiredComponents = null, string[] requiredWorkloads = null)
+        public static List<VsInstallation> GetVisualStudioInstallationsFromQuery(
+            DevEnv visualVersion,
+            bool allowPrereleaseVersions = false,
+            string[] requiredComponents = null,
+            string[] requiredWorkloads = null
+        )
         {
             // Fetch all installed products
             var installedVersions = GetVisualStudioInstalledVersions();
@@ -1873,6 +1893,7 @@ namespace Sharpmake
 
             var candidates = installedVersions.Where(i =>
                     i.Version.Major == majorVersion
+                    && (!i.IsPrerelease || allowPrereleaseVersions)
                     && s_supportedVisualStudioProducts.Contains(i.ProductID, StringComparer.OrdinalIgnoreCase)
                     && (requiredComponents == null || !requiredComponents.Except(i.Components).Any())
                     && (requiredWorkloads == null || !requiredWorkloads.Except(i.Workloads).Any()))
@@ -1881,11 +1902,18 @@ namespace Sharpmake
             return candidates;
         }
 
-        public static string GetVisualStudioInstallPathFromQuery(DevEnv visualVersion, bool allowPrereleaseVersions = false,
-            string[] requiredComponents = null, string[] requiredWorkloads = null)
+        public static string GetVisualStudioInstallPathFromQuery(
+            DevEnv visualVersion,
+            bool allowPrereleaseVersions = false,
+            string[] requiredComponents = null,
+            string[] requiredWorkloads = null
+        )
         {
+            if (IsRunningInMono())
+                return null;
+
             var vsInstallations = GetVisualStudioInstallationsFromQuery(visualVersion, allowPrereleaseVersions, requiredComponents, requiredWorkloads);
-            VsInstallation priorityInstallation = vsInstallations.FirstOrDefault(i => allowPrereleaseVersions || !i.IsPrerelease);
+            VsInstallation priorityInstallation = vsInstallations.FirstOrDefault();
             return priorityInstallation != null ? SimplifyPath(priorityInstallation.InstallationPath) : null;
         }
 
@@ -1902,9 +1930,10 @@ namespace Sharpmake
         public static string GetDotNetTargetString(DotNetFramework framework)
         {
             string version = framework.ToVersionString();
-            return string.IsNullOrEmpty(version)
-                ? String.Empty
-                : String.Format("v{0}", version);
+            if (string.IsNullOrEmpty(version))
+                return string.Empty;
+
+            return string.Format("v{0}", version);
         }
 
         public static string GetToolVersionString(DevEnv env, DotNetFramework desiredFramework)
@@ -2092,7 +2121,7 @@ namespace Sharpmake
             return PlatformRegistry.Query<IPlatformDescriptor>(platform)?.SimplePlatformString ?? platform.ToString();
         }
 
-        public static string GetPlatformString(Platform platform, Project project, bool isForSolution = false)
+        public static string GetPlatformString(Platform platform, Project project, ITarget target, bool isForSolution = false)
         {
             if (project is CSharpProject)
             {
@@ -2110,7 +2139,13 @@ namespace Sharpmake
                 return isForSolution ? "Any CPU" : "AnyCPU";
             }
 
-            return GetSimplePlatformString(platform);
+            return PlatformRegistry.Query<IPlatformDescriptor>(platform)?.GetPlatformString(target) ?? platform.ToString();
+        }
+
+        [Obsolete("GetPlatformString() now requires a `target` parameter.")]
+        public static string GetPlatformString(Platform platform, Project project, bool isForSolution = false)
+        {
+            return GetPlatformString(platform, project, null, isForSolution);
         }
 
         public static string CallerInfoTag = "CALLER_INFO: ";
@@ -2125,7 +2160,7 @@ namespace Sharpmake
         /// <param name="callerInfo1"></param>
         /// <param name="callerInfo2"></param>
         /// <returns>
-        /// 1.if they are both refering to file edited by sharpmake user (.sharpmake): concatenation of both separated by a line return
+        /// 1.if they are both referring to file edited by sharpmake user (.sharpmake): concatenation of both separated by a line return
         /// 2.if only callerInfo2 refer to file edited by sharpmake user (.sharpmake): callerInfo2
         /// 3.otherwise: callerInfo1
         /// </returns>
@@ -2222,7 +2257,13 @@ namespace Sharpmake
         }
 
         private static ConcurrentDictionary<Tuple<string, string>, string> s_registryCache = new ConcurrentDictionary<Tuple<string, string>, string>();
+
         public static string GetRegistryLocalMachineSubKeyValue(string registrySubKey, string value, string fallbackValue)
+        {
+            return GetRegistryLocalMachineSubKeyValue(registrySubKey, value, fallbackValue, enableLog: true);
+        }
+
+        public static string GetRegistryLocalMachineSubKeyValue(string registrySubKey, string value, string fallbackValue, bool enableLog)
         {
             var subKeyValueTuple = new Tuple<string, string>(registrySubKey, value);
             string registryValue;
@@ -2237,10 +2278,10 @@ namespace Sharpmake
                     if (localMachineKey != null)
                     {
                         key = (string)localMachineKey.GetValue(value);
-                        if (string.IsNullOrEmpty(key))
+                        if (enableLog && string.IsNullOrEmpty(key))
                             LogWrite("Value '{0}' under registry subKey '{1}' is not set, fallback to default: '{2}'", value ?? "(Default)", registrySubKey, fallbackValue);
                     }
-                    else
+                    else if (enableLog)
                         LogWrite("Registry subKey '{0}' is not found, fallback to default for value '{1}': '{2}'", registrySubKey, value ?? "(Default)", fallbackValue);
                 }
             }

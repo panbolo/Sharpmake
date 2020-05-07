@@ -64,6 +64,7 @@ namespace Sharpmake
                     v10_0_17134_0, // 1803, April 2018 Update
                     v10_0_17763_0, // 1809, October 2018 Update
                     v10_0_18362_0, // 1903, May 2019 Update
+                    Latest,        // latest available in host machine
                 }
 
                 public enum CharacterSet
@@ -391,6 +392,14 @@ namespace Sharpmake
                     Enable,
                 }
 
+                public enum ConformanceMode
+                {
+                    [Default]
+                    Disable,
+                    [DevEnvVersion(minimum = DevEnv.vs2017)]
+                    Enable,
+                }
+
                 public enum DisableLanguageExtensions
                 {
                     [Default]
@@ -480,6 +489,7 @@ namespace Sharpmake
 
                 public enum DefineCPlusPlus
                 {
+                    Default,
                     Disable,
                     [Default]
                     Enable
@@ -527,10 +537,20 @@ namespace Sharpmake
 
                 public enum SupportJustMyCode
                 {
+                    [Default]
+                    Default,
                     [DevEnvVersion(minimum = DevEnv.vs2017)]
                     Yes,
-                    [Default] // The actual default for VS is Yes, but this will not work for old VS versions.
                     No
+                }
+
+                public enum SpectreMitigation
+                {
+                    [Default]
+                    Default,
+                    [DevEnvVersion(minimum = DevEnv.vs2017)]
+                    Enabled,
+                    Disabled
                 }
             }
 
@@ -541,6 +561,23 @@ namespace Sharpmake
                     Enable,
                     [Default]
                     Disable
+                }
+            }
+
+            public static class Librarian
+            {
+                public enum TreatLibWarningAsErrors
+                {
+                    Enable,
+                    [Default]
+                    Disable
+                }
+
+                public class DisableSpecificWarnings : Strings
+                {
+                    public DisableSpecificWarnings(params string[] warnings)
+                        : base(warnings)
+                    { }
                 }
             }
 
@@ -852,6 +889,13 @@ namespace Sharpmake
                     Enable,
                     Disable
                 }
+
+                public enum TreatLinkerWarningAsErrors
+                {
+                    Enable,
+                    [Default]
+                    Disable
+                }
             }
 
             public static class ManifestTool
@@ -888,15 +932,15 @@ namespace Sharpmake
 
                 public class PreprocessorDefinitions : Strings
                 {
-                    public PreprocessorDefinitions(params string[] defintions)
-                        : base(defintions)
+                    public PreprocessorDefinitions(params string[] definitions)
+                        : base(definitions)
                     { }
                 }
 
                 public class UndefinePreprocessorDefinitions : Strings
                 {
-                    public UndefinePreprocessorDefinitions(params string[] defintions)
-                        : base(defintions)
+                    public UndefinePreprocessorDefinitions(params string[] definitions)
+                        : base(definitions)
                     { }
                 }
 

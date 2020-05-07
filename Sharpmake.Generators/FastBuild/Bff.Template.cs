@@ -11,6 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+using System;
+
 namespace Sharpmake.Generators.FastBuild
 {
     public partial class Bff
@@ -58,11 +61,14 @@ namespace Sharpmake.Generators.FastBuild
 //=================================================================================================================
 Settings
 {
+    #import TMP
+    #import TEMP
+    #import USERPROFILE
     .Environment =
     {
-        ""TMP=[fastBuildTempFolder]"",
-        ""TEMP=[fastBuildTempFolder]"",
-        ""USERPROFILE=[fastBuildUserProfile]"",
+        ""TMP=$TMP$"",
+        ""TEMP=$TEMP$"",
+        ""USERPROFILE=$USERPROFILE$"",
         ""SystemRoot=[fastBuildSystemRoot]""
         ""PATH=[fastBuildPATH]""
     }
@@ -78,13 +84,12 @@ Settings
 
                 public static string CompilerSetting = @"
 //=================================================================================================================
-// [fastbuildCompilerName]
-//=================================================================================================================
 Compiler( '[fastbuildCompilerName]' )
 {
     .ExecutableRootPath     = '[fastBuildCompilerRootPath]'
     .Executable             = '[fastBuildCompilerExecutable]'
     .ExtraFiles             = [fastBuildExtraFiles]
+    .CompilerFamily         = '[fastBuildCompilerFamily]'
     [fastBuildVS2012EnumBugWorkaround]
 }
 ";
@@ -101,6 +106,7 @@ Compiler( '[fastbuildCompilerName]' )
     .Linker                 = '[fastBuildLinker]'
     .PlatformLibPaths       = '[fastBuildPlatformLibPaths]'
     .Executable             = '[fastBuildExecutable]'
+    .LinkerType             = '[fastBuildLinkerType]'
 ]
 ";
 
@@ -113,6 +119,7 @@ Compiler( '[fastbuildCompilerName]' )
                             + ' [cmdLineOptions.LinkerSuppressStartupBanner]'
                             + ' [cmdLineOptions.AdditionalLibraryDirectories]'
                             + ' [cmdLineOptions.ForceFileOutput]'
+                            + ' [cmdLineOptions.TreatLinkerWarningAsErrors]'
                             // Input
                             // ---------------------------
                             + ' [cmdLineOptions.AdditionalDependencies]'
@@ -130,7 +137,8 @@ Compiler( '[fastbuildCompilerName]' )
                             + ' [cmdLineOptions.ManifestFile]'
                             // Debugging
                             // ---------------------------
-                            + ' [cmdLineOptions.GenerateDebugInformation]'
+                            + ' [cmdLineOptions.LinkerGenerateDebugInformation]'
+                            + ' [cmdLineOptions.LinkerNatvisFiles]'
                             + ' [cmdLineOptions.LinkerProgramDatabaseFile]'
                             + ' [cmdLineOptions.GenerateMapFile]'
                             + ' [cmdLineOptions.MapExports]'
@@ -186,7 +194,7 @@ Compiler( '[fastbuildCompilerName]' )
 ";
                 public static string PCHOptionsClang = @"
     // Precompiled Header options for Clang
-    // --------------------------
+    // ------------------------------------
     .PCHInputFile           = '[fastBuildPrecompiledSourceFile]'
     .PCHOutputFile          = '[cmdLineOptions.PrecompiledHeaderFile]'
     .PCHOptions             = '-o ""%2"" -c -x c++-header ""%1""'
@@ -216,6 +224,7 @@ Compiler( '[fastbuildCompilerName]' )
                 public static string ResourceCompilerExtraOptions = @"
     .ResourceCompilerExtraOptions   = ' /l 0x0409 /nologo'
                                     + ' [cmdLineOptions.AdditionalResourceIncludeDirectories]'
+                                    + ' [cmdLineOptions.ResourcePreprocessorDefinitions]'
 ";
 
                 public static string EmbeddedResourceCompilerOptions = @"
@@ -271,7 +280,8 @@ Compiler( '[fastbuildCompilerName]' )
     .LibrarianOutput        = '[fastBuildOutputFile]'
     .LibrarianOptions       = '""%1"" /OUT:""%2""'
                             + ' [cmdLineOptions.LinkerSuppressStartupBanner]'
-                            + ' [options.AdditionalLinkerOptions]'
+                            + ' [cmdLineOptions.TreatLibWarningAsErrors]'
+                            + ' [options.AdditionalLibrarianOptions]'
 
 ";
 
@@ -333,6 +343,8 @@ Compiler( '[fastbuildCompilerName]' )
             + ' [cmdLineOptions.FloatingPointModel]'
             + ' [cmdLineOptions.FloatingPointExceptions]'
             + ' [cmdLineOptions.CreateHotpatchableImage]'
+            + ' [cmdLineOptions.SupportJustMyCode]'
+            + ' [cmdLineOptions.SpectreMitigation]'
             // Language options
             // ---------------------------
             + ' [cmdLineOptions.DisableLanguageExtensions]'
@@ -350,6 +362,7 @@ Compiler( '[fastbuildCompilerName]' )
             + ' [cmdLineOptions.CallingConvention]'
             + ' [cmdLineOptions.DisableSpecificWarnings]'
             + ' [cmdLineOptions.ForcedIncludeFiles]'
+            + ' [fastBuildSourceFileType]'
             + ' [fastBuildAdditionalCompilerOptionsFromCode]'
             + ' /errorReport:queue'
             // Character Set
@@ -393,8 +406,7 @@ Compiler( '[fastbuildCompilerName]' )
     .DeoptimizeWritableFilesWithToken = [fastBuildDeoptimizationWritableFilesWithToken]
 ";
                 public static string PreBuildDependencies = @"
-    .PreBuildDependencies = { [fastBuildPreBuildTargets]
-                            }
+    .PreBuildDependencies = [fastBuildPreBuildTargets]
 ";
 
                 public static string PlatformBeginSection = @"
@@ -411,8 +423,6 @@ Compiler( '[fastbuildCompilerName]' )
 
                 public static string LibBeginSection = @"
 //=================================================================================================================
-// LIB [fastBuildOutputFileShortName]_[fastBuildOutputType] [fastBuildPartialLibInfo]
-//=================================================================================================================
 Library( '[fastBuildOutputFileShortName]_[fastBuildOutputType]' )
 {
     [fastBuildUsingPlatformConfig]
@@ -424,8 +434,6 @@ Library( '[fastBuildOutputFileShortName]_[fastBuildOutputType]' )
 
                 public static string TargetSection = @"
 //=================================================================================================================
-// Alias [fastBuildOutputFileShortName]
-//=================================================================================================================
 Alias( '[fastBuildOutputFileShortName]' )
 {
     .Targets = [fastBuildTargetSubTargets]
@@ -433,8 +441,6 @@ Alias( '[fastBuildOutputFileShortName]' )
 
 ";
                 public static string CopyFileSection = @"
-//=================================================================================================================
-// Copy file [fastBuildCopySource] to [fastBuildCopyDest]
 //=================================================================================================================
 Copy( '[fastBuildCopyAlias]' )
 {
@@ -446,17 +452,11 @@ Copy( '[fastBuildCopyAlias]' )
 
                 public static string ExeDllBeginSection = @"
 //=================================================================================================================
-// [fastBuildOutputType] [fastBuildOutputFileShortName]_[fastBuildOutputType]
-//=================================================================================================================
 [fastBuildOutputType]( '[fastBuildOutputFileShortName]_[fastBuildOutputType]' )
 {
      [fastBuildUsingPlatformConfig]
     .Intermediate           = '[cmdLineOptions.IntermediateDirectory]\'
-    .Libraries              = { [fastBuildProjectDependencies]
-                                [fastBuildObjectListResourceDependencies]
-                                [fastBuildObjectListDependencies]
-                                '[fastBuildOutputFileShortName]_objects'
-                              }
+    .Libraries              = [fastBuildProjectDependencies]
     .LinkerAssemblyResources = { [fastBuildObjectListEmbeddedResources] }
     .LinkerOutput           = '[fastBuildLinkerOutputFile]'
     .LinkerLinkObjects      = [fastBuildLinkerLinkObjects]
@@ -466,8 +466,6 @@ Copy( '[fastBuildCopyAlias]' )
 
                 public static string ResourcesBeginSection = @"
 //=================================================================================================================
-// ObjectList [fastBuildOutputFileShortName]_resources
-//=================================================================================================================
 ObjectList( '[fastBuildOutputFileShortName]_resources' )
 {
      [fastBuildUsingPlatformConfig]
@@ -475,8 +473,6 @@ ObjectList( '[fastBuildOutputFileShortName]_resources' )
 ";
 
                 public static string EmbeddedResourcesBeginSection = @"
-//=================================================================================================================
-// ObjectList [fastBuildOutputFileShortName]_embedded
 //=================================================================================================================
 ObjectList( '[fastBuildOutputFileShortName]_embedded' )
 {
@@ -486,22 +482,18 @@ ObjectList( '[fastBuildOutputFileShortName]_embedded' )
 
                 public static string ObjectListBeginSection = @"
 //=================================================================================================================
-// ObjectList [fastBuildOutputFileShortName]_objects
-//=================================================================================================================
 ObjectList( '[fastBuildOutputFileShortName]_objects' )
 {
      [fastBuildUsingPlatformConfig]
     .Intermediate           = '[cmdLineOptions.IntermediateDirectory]\'
 ";
 
-                public static string GenericExcutableSection = @"
-//=================================================================================================================
-// Exec [fastBuildPreBuildName]
+                public static string GenericExecutableSection = @"
 //=================================================================================================================
 Exec( '[fastBuildPreBuildName]' )
 {
   .ExecExecutable       = '[fastBuildPrebuildExeFile]'
-  .ExecInput            = '[fastBuildPreBuildInputFile]'
+  .ExecInput            = [fastBuildPreBuildInputFiles]
   .ExecOutput           = '[fastBuildPreBuildOutputFile]'
   .ExecArguments        = '[fastBuildPreBuildArguments]'
   .ExecWorkingDir       = '[fastBuildPrebuildWorkingPath]'
@@ -510,10 +502,10 @@ Exec( '[fastBuildPreBuildName]' )
 }
 
 ";
+                [Obsolete("Section has been renamed to: GenericExecutableSection")]
+                public static string GenericExcutableSection = GenericExecutableSection;
 
                 public static string TestSection = @"
-//=================================================================================================================
-// Test [fastBuildTest]
 //=================================================================================================================
 Test( '[fastBuildTest]' )
 {

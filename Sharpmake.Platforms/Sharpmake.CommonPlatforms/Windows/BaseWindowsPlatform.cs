@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 using System.Collections.Generic;
+using System.Linq;
 using Sharpmake.Generators;
 
 namespace Sharpmake
@@ -23,6 +24,7 @@ namespace Sharpmake
             #region IWindowsFastBuildCompilerSettings implementation
             public override bool IsPcPlatform => true;
             public IDictionary<DevEnv, string> BinPath { get; set; } = new Dictionary<DevEnv, string>();
+            public IDictionary<IFastBuildCompilerKey, CompilerFamily> CompilerFamily { get; set; } = new Dictionary<IFastBuildCompilerKey, CompilerFamily>();
             public IDictionary<DevEnv, string> LinkerPath { get; set; } = new Dictionary<DevEnv, string>();
             public IDictionary<DevEnv, string> LinkerExe { get; set; } = new Dictionary<DevEnv, string>();
             public IDictionary<DevEnv, string> LibrarianExe { get; set; } = new Dictionary<DevEnv, string>();
@@ -105,6 +107,14 @@ namespace Sharpmake
                         context.Options["IncludePath"] = ClangForWindows.GetWindowsClangIncludePath() + ";" + devEnv.GetWindowsIncludePath();
                         context.Options["LibraryPath"] = ClangForWindows.GetWindowsClangLibraryPath() + ";" + devEnv.GetWindowsLibraryPath(conf.Platform, Util.IsDotNet(conf) ? conf.Target.GetFragment<DotNetFramework>() : default(DotNetFramework?));
                     }
+                }
+
+                OrderableStrings SystemIncludes = new OrderableStrings(conf.DependenciesIncludeSystemPaths);
+                SystemIncludes.AddRange(conf.IncludeSystemPaths);
+                if (SystemIncludes.Count > 0)
+                {
+                    SystemIncludes.Sort();
+                    context.Options["IncludePath"] += ";" + SystemIncludes.JoinStrings(";");
                 }
             }
             #endregion

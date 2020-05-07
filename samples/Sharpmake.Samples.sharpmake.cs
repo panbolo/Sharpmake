@@ -7,10 +7,11 @@ namespace SharpmakeGen.Samples
 {
     public abstract class SampleProject : Common.SharpmakeBaseProject
     {
-        public SampleProject()
+        protected SampleProject()
             : base(excludeSharpmakeFiles: false, generateXmlDoc: false)
         {
-            SourceRootPath = @"[project.RootPath]\samples\[project.Name]";
+            // samples are special, all the classes are here instead of in the subfolders
+            SourceRootPath = @"[project.SharpmakeCsPath]\[project.Name]";
             SourceFilesExcludeRegex.Add(
                 @"\\codebase\\",
                 @"\\projects\\",
@@ -77,6 +78,15 @@ namespace SharpmakeGen.Samples
     }
 
     [Generate]
+    public class CSharpImportsProject : SampleProject
+    {
+        public CSharpImportsProject()
+        {
+            Name = "CSharpImports";
+        }
+    }
+
+    [Generate]
     public class HelloWorldProject : SampleProject
     {
         public HelloWorldProject()
@@ -118,6 +128,42 @@ namespace SharpmakeGen.Samples
         public SimpleExeLibDependencyProject()
         {
             Name = "SimpleExeLibDependency";
+        }
+    }
+    
+    [Generate]
+    public class DotNetCoreFrameworkHelloWorldProject : SampleProject
+    {
+        public DotNetCoreFrameworkHelloWorldProject()
+        {
+            Name = "DotNetCoreFrameworkHelloWorld";
+            SourceRootPath = @"[project.SharpmakeCsPath]\NetCore\[project.Name]";
+        }
+    }
+
+    [Generate]
+    public class DotNetFrameworkHelloWorldProject : SampleProject
+    {
+        public DotNetFrameworkHelloWorldProject()
+        {
+            Name = "DotNetFrameworkHelloWorld";
+            SourceRootPath = @"[project.SharpmakeCsPath]\NetCore\[project.Name]";
+        }
+    }
+
+    [Generate]
+    public class CompileCommandDatabaseProject : SampleProject
+    {
+        public CompileCommandDatabaseProject()
+        {
+            Name = "CompileCommandDatabase";
+        }
+
+        public override void ConfigureAll(Configuration conf, Target target)
+        {
+            base.ConfigureAll(conf, target);
+
+            conf.AddPrivateDependency<SharpmakeGeneratorsProject>(target);
         }
     }
 }

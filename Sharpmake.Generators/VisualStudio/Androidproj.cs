@@ -84,7 +84,7 @@ namespace Sharpmake.Generators.VisualStudio
 
                 Project.Configuration otherConf;
 
-                string projectUniqueName = conf.Name + Util.GetPlatformString(conf.Platform, conf.Project);
+                string projectUniqueName = conf.Name + Util.GetPlatformString(conf.Platform, conf.Project, conf.Target);
                 if (configurationNameMapping.TryGetValue(projectUniqueName, out otherConf))
                 {
                     var differBy = Util.MakeDifferenceString(conf, otherConf);
@@ -128,7 +128,7 @@ namespace Sharpmake.Generators.VisualStudio
             // xml header contain description of each target
             foreach (Project.Configuration conf in _ProjectConfigurationList)
             {
-                using (resolver.NewScopedParameter("platformName", Util.GetPlatformString(conf.Platform, conf.Project)))
+                using (resolver.NewScopedParameter("platformName", Util.GetPlatformString(conf.Platform, conf.Project, conf.Target)))
                 using (resolver.NewScopedParameter("conf", conf))
                 {
                     Write(Template.Project.ProjectConfigurationDescription, writer, resolver);
@@ -158,7 +158,7 @@ namespace Sharpmake.Generators.VisualStudio
             // configuration general
             foreach (Project.Configuration conf in _ProjectConfigurationList)
             {
-                using (resolver.NewScopedParameter("platformName", Util.GetPlatformString(conf.Platform, conf.Project)))
+                using (resolver.NewScopedParameter("platformName", Util.GetPlatformString(conf.Platform, conf.Project, conf.Target)))
                 using (resolver.NewScopedParameter("conf", conf))
                 using (resolver.NewScopedParameter("options", options[conf]))
                 {
@@ -175,7 +175,7 @@ namespace Sharpmake.Generators.VisualStudio
             // configuration ItemDefinitionGroup
             foreach (Project.Configuration conf in _ProjectConfigurationList)
             {
-                using (resolver.NewScopedParameter("platformName", Util.GetPlatformString(conf.Platform, conf.Project)))
+                using (resolver.NewScopedParameter("platformName", Util.GetPlatformString(conf.Platform, conf.Project, conf.Target)))
                 using (resolver.NewScopedParameter("conf", conf))
                 using (resolver.NewScopedParameter("options", options[conf]))
                 using (resolver.NewScopedParameter("androidPackageDirectory", androidPackageDirectory))
@@ -229,14 +229,15 @@ namespace Sharpmake.Generators.VisualStudio
             List<ProjectFile> allFiles = new List<ProjectFile>();
             List<ProjectFile> includeFiles = new List<ProjectFile>();
             List<ProjectFile> sourceFiles = new List<ProjectFile>();
+            List<ProjectFile> contentFiles = new List<ProjectFile>();
 
             foreach (string file in projectFiles)
             {
-                ProjectFile projectFile = new ProjectFile(file, _ProjectDirectoryCapitalized);
+                ProjectFile projectFile = new ProjectFile(file, _ProjectDirectoryCapitalized, _Project.SourceRootPath);
                 allFiles.Add(projectFile);
             }
 
-            allFiles.Sort((ProjectFile l, ProjectFile r) => { return l.FileNameProjectRelative.CompareTo(r.FileNameProjectRelative); });
+            allFiles.Sort((ProjectFile l, ProjectFile r) => { return string.Compare(l.FileNameProjectRelative, r.FileNameProjectRelative, StringComparison.OrdinalIgnoreCase); });
 
             // type -> files
             var customSourceFiles = new Dictionary<string, List<ProjectFile>>();
@@ -258,9 +259,13 @@ namespace Sharpmake.Generators.VisualStudio
                 {
                     sourceFiles.Add(projectFile);
                 }
-                else // if (projectFile.FileExtension == "h")
+                else if (String.Compare(projectFile.FileExtension, ".h", StringComparison.OrdinalIgnoreCase) == 0)
                 {
                     includeFiles.Add(projectFile);
+                }
+                else
+                {
+                    contentFiles.Add(projectFile);
                 }
             }
 
@@ -273,6 +278,17 @@ namespace Sharpmake.Generators.VisualStudio
             }
             Write(Template.Project.ProjectFilesEnd, writer, resolver);
 
+            // Write content files
+            Write(Template.Project.ProjectFilesBegin, writer, resolver);
+            foreach (ProjectFile file in contentFiles)
+            {
+                using (resolver.NewScopedParameter("file", file))
+                    Write(Template.Project.ContentSimple, writer, resolver);
+            }
+            Write(Template.Project.ProjectFilesEnd, writer, resolver);
+
+
+            // Write Android project files
             Write(Template.Project.ItemGroupBegin, writer, resolver);
 
             using (resolver.NewScopedParameter("antBuildXml", project.AntBuildXml))
@@ -370,7 +386,11 @@ namespace Sharpmake.Generators.VisualStudio
             Options.Option(Options.Android.General.AndroidAPILevel.Android21, () => { options["AndroidAPILevel"] = "android-21"; }),
             Options.Option(Options.Android.General.AndroidAPILevel.Android22, () => { options["AndroidAPILevel"] = "android-22"; }),
             Options.Option(Options.Android.General.AndroidAPILevel.Android23, () => { options["AndroidAPILevel"] = "android-23"; }),
-            Options.Option(Options.Android.General.AndroidAPILevel.Android24, () => { options["AndroidAPILevel"] = "android-24"; })
+            Options.Option(Options.Android.General.AndroidAPILevel.Android24, () => { options["AndroidAPILevel"] = "android-24"; }),
+            Options.Option(Options.Android.General.AndroidAPILevel.Android25, () => { options["AndroidAPILevel"] = "android-25"; }),
+            Options.Option(Options.Android.General.AndroidAPILevel.Android26, () => { options["AndroidAPILevel"] = "android-26"; }),
+            Options.Option(Options.Android.General.AndroidAPILevel.Android27, () => { options["AndroidAPILevel"] = "android-27"; }),
+            Options.Option(Options.Android.General.AndroidAPILevel.Android28, () => { options["AndroidAPILevel"] = "android-28"; })
             );
 
             //OutputDirectory
@@ -391,15 +411,18 @@ namespace Sharpmake.Generators.VisualStudio
         {
             public string FileName;
             public string FileNameProjectRelative;
+            public string FileNameSourceRelative;
             public string FileExtension;
 
-            public ProjectFile(string fileName, string projectDirectoryCapitalized)
+            public ProjectFile(string fileName, string projectDirectoryCapitalized, string sourceRootPath)
             {
                 FileName = Project.GetCapitalizedFile(fileName);
                 if (FileName == null)
                     FileName = fileName;
 
                 FileNameProjectRelative = Util.PathGetRelative(projectDirectoryCapitalized, FileName, true);
+
+                FileNameSourceRelative = Util.PathGetRelative(sourceRootPath, FileName, true);
 
                 FileExtension = Path.GetExtension(FileName);
             }

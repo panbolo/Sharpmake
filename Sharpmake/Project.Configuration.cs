@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2017 Ubisoft Entertainment
+// Copyright (c) 2017 Ubisoft Entertainment
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,36 +36,37 @@ namespace Sharpmake
 
         /// <summary>
         /// The dependent project inherits the library files of the dependency.
+        /// Valid only when the project is a C or a C++ project.
         /// </summary>
         LibraryFiles = 1 << 1,
 
         /// <summary>
         /// The dependent project inherits the library paths of the dependency.
-        /// Valid only when the project is not a C or a C++ project.
+        /// Valid only when the project is a C or a C++ project.
         /// </summary>
         LibraryPaths = 1 << 2,
 
         /// <summary>
         /// The dependent project inherits the include paths of the dependency.
-        /// Valid only when the project is not a C or a C++ project.
+        /// Valid only when the project is a C or a C++ project.
         /// </summary>
         IncludePaths = 1 << 3,
 
         /// <summary>
         /// The dependent project inherits the defined symbols of the dependency.
-        /// Valid only when the project is not a C or a C++ project.
+        /// Valid only when the project is a C or a C++ project.
         /// </summary>
         Defines = 1 << 4,
 
         /// <summary>
-        /// The dependant project inherits the `using` paths of the dependency.
+        /// The dependent project inherits the `using` paths of the dependency.
         /// Valid only if the project is a C# project and uses Microsoft C++/CX extensions .
         /// </summary>
         AdditionalUsingDirectories = 1 << 5,
         ForceUsingAssembly = 1 << 6,
 
         /// <summary>
-        /// Specifies that the dependant project inherits the dependency's library files, library
+        /// Specifies that the dependent project inherits the dependency's library files, library
         /// paths, include paths and defined symbols.
         /// </summary>
         Default = LibraryFiles |
@@ -74,7 +75,7 @@ namespace Sharpmake
                   Defines,
 
         /// <summary>
-        /// Specifies that the dependant project inherits the dependency's include paths and
+        /// Specifies that the dependent project inherits the dependency's include paths and
         /// defined symbols, but not it's library files or library paths. Use this for header-only
         /// C++ libraries.
         /// </summary>
@@ -495,9 +496,9 @@ namespace Sharpmake
 
             /// <summary>
             /// Gets or sets whether dependent projects will copy their debugging database to the
-            /// target path of their dependency projects. The default value is <c>true</c>.
+            /// target path of their dependency projects. The default value is <c>false</c>.
             /// </summary>
-            public bool CopyCompilerPdbToDependentTargets = true;
+            public bool CopyCompilerPdbToDependentTargets = false;
 
             // Xcopy parameters
             // /d           Copy file only if the source time is newer than the destination time.
@@ -771,9 +772,16 @@ namespace Sharpmake
 
             /// <summary>
             /// Gets a list of include paths for compiling C and C++ libraries that are not
-            /// shared with dependant projects.
+            /// shared with dependent projects.
             /// </summary>
             public OrderableStrings IncludePrivatePaths = new OrderableStrings();
+
+            /// <summary>
+            /// Gets a list of system include paths for compiling C and C++ projects. When possible, these paths are searched first when #include <> is used.
+            /// </summary>
+            public OrderableStrings IncludeSystemPaths = new OrderableStrings();
+
+            public OrderableStrings DependenciesIncludeSystemPaths { get; private set; } = new OrderableStrings();
 
             #region Resource Includes
             /// <summary>
@@ -827,6 +835,14 @@ namespace Sharpmake
             /// Used only by the Visual Studio generators.
             /// </remarks>
             public Strings AdditionalNone = new Strings();
+
+            /// <summary>
+            /// Adds commands for VS debugger
+            /// </summary>
+            /// <remarks>
+            /// Used only by the Visual Studio generators.
+            /// </remarks>
+            public string AdditionalDebuggerCommands = RemoveLineTag;
 
             /// <summary>
             /// Gets or sets the name of the source file for the precompiled header in C and C++
@@ -1048,7 +1064,7 @@ namespace Sharpmake
             /// Gets a list of the static libraries to link to.
             /// </summary>
             /// <remarks>
-            /// This should only be used for third party libaries that are not part of the compiled
+            /// This should only be used for third party libraries that are not part of the compiled
             /// source code. Libraries that are part of the compiled source code should be included
             /// by calling either
             /// <see cref="AddPublicDependency{TPROJECT}(ITarget, DependencySetting, string, int)"/>
@@ -1117,6 +1133,11 @@ namespace Sharpmake
             /// instead of adding elements directly to this list.
             /// </remarks>
             public List<DotNetDependency> DotNetPrivateDependencies = new List<DotNetDependency>();
+
+            /// <summary>
+            /// Options passed to the librarian / archiver
+            /// </summary>
+            public OrderableStrings AdditionalLibrarianOptions = new OrderableStrings();
 
             /// <summary>
             /// Gets a list of linker options to send when calling the compiler.
@@ -1352,11 +1373,34 @@ namespace Sharpmake
                 public string ExecutableWorkingDirectory = "";
 
                 /// <summary>
+                /// Sets multiple files as executable input. Only supported by Bff generator.
+                /// </summary>
+                public Strings FastBuildExecutableInputFiles = new Strings();
+
+                /// <summary>
                 /// Gets or sets whether the output is to *stdout*.
                 /// </summary>
                 public bool FastBuildUseStdOutAsOutput = false;
 
                 public bool FastBuildAlwaysShowOutput = false;
+
+                internal override void Resolve(Resolver resolver)
+                {
+                    base.Resolve(resolver);
+
+                    if (!string.IsNullOrEmpty(ExecutableInputFileArgumentOption) &&
+                        FastBuildExecutableInputFiles.Count > 0)
+                    {
+                        throw new Error("BuildStepExecutable has both ExecutableInputFileArgumentOption and FastBuildExecutableInputFiles defined. " +
+                            "These options are mutually exclusive.\n" +
+                            "Executable: {0}\n" +
+                            "ExecutableInputFileArgumentOption: {1}\n" +
+                            "FastBuildExecutableInputFiles: {2}",
+                            ExecutableFile,
+                            ExecutableInputFileArgumentOption,
+                            FastBuildExecutableInputFiles);
+                    }
+                }
             }
 
             [Resolver.Resolvable]
@@ -2012,6 +2056,9 @@ namespace Sharpmake
             /// </summary>
             public string FastBuildCustomArgs = string.Empty;
 
+            // If true, remove the source files from a FastBuild project's associated vcxproj file.
+            public bool StripFastBuildSourceFiles = true;
+
             private Dictionary<KeyValuePair<Type, ITarget>, DependencySetting> _dependenciesSetting = new Dictionary<KeyValuePair<Type, ITarget>, DependencySetting>();
 
             // These dependencies will not be propagated to other projects that depend on us
@@ -2130,7 +2177,7 @@ namespace Sharpmake
                 Project project = (Project)owner;
 
                 // Change Output default for Export
-                if (project.GetType().IsDefined(typeof(Export), false))
+                if (project.SharpmakeProjectType == ProjectTypeAttribute.Export)
                     Output = OutputType.None;
             }
 
@@ -2151,7 +2198,7 @@ namespace Sharpmake
                     System.Diagnostics.Debugger.Break();
                 Util.ResolvePath(Project.SharpmakeCsPath, ref IntermediatePath);
                 Util.ResolvePath(Project.SharpmakeCsPath, ref LibraryPaths);
-                Util.ResolvePath(Project.SharpmakeCsPath, ref TargetCopyFiles);
+                Util.ResolvePathAndFixCase(Project.SharpmakeCsPath, ref TargetCopyFiles);
                 Util.ResolvePath(Project.SharpmakeCsPath, ref TargetDependsFiles);
                 Util.ResolvePath(Project.SharpmakeCsPath, ref TargetPath);
                 Util.ResolvePath(Project.SharpmakeCsPath, ref TargetLibraryPath);
@@ -2160,7 +2207,7 @@ namespace Sharpmake
                     Util.ResolvePath(Project.SharpmakeCsPath, ref _blobPath);
 
                 // workaround for export projects: they do not generate pdb, so no need to resolve their paths
-                if (!Project.GetType().IsDefined(typeof(Export), false))
+                if (Project.SharpmakeProjectType != ProjectTypeAttribute.Export)
                 {
                     // Reset to the default if the script set it to an empty string.
                     if (!string.IsNullOrEmpty(LinkerPdbFilePath))
@@ -2268,7 +2315,7 @@ namespace Sharpmake
                 string dependencyExtension = Util.GetProjectFileExtension(this);
                 ProjectFullFileNameWithExtension = ProjectFullFileName + dependencyExtension;
 
-                if (string.IsNullOrEmpty(ProjectGuid) && !this.Project.GetType().IsDefined(typeof(Compile), false))
+                if (string.IsNullOrEmpty(ProjectGuid) && Project.SharpmakeProjectType != ProjectTypeAttribute.Compile)
                     ProjectGuid = Util.BuildGuid(ProjectFullFileNameWithExtension, Project.GuidReferencePath);
 
                 if (PrecompHeader != null)
@@ -2549,9 +2596,8 @@ namespace Sharpmake
             {
                 if (l.Project.DependenciesOrder != r.Project.DependenciesOrder)
                     return l.Project.DependenciesOrder.CompareTo(r.Project.DependenciesOrder);
-                else
-                    return l.Project.FullClassName.CompareTo(r.Project.FullClassName);
-                //return l.Target.CompareTo(r.Target);
+
+                return string.Compare(l.Project.FullClassName, r.Project.FullClassName, StringComparison.Ordinal);
             }
 
             internal class DependencyNode
@@ -2573,6 +2619,9 @@ namespace Sharpmake
                 public string LocalDebuggerCommandArguments = RemoveLineTag;
                 public string LocalDebuggerEnvironment = RemoveLineTag;
                 public string LocalDebuggerWorkingDirectory = RemoveLineTag;
+                public string RemoteDebuggerCommand = RemoveLineTag;
+                public string RemoteDebuggingMode = RemoveLineTag;
+                public string RemoteDebuggerWorkingDirectory = RemoveLineTag;
                 public bool OverwriteExistingFile = true;
             }
 
@@ -2637,11 +2686,11 @@ namespace Sharpmake
                     }
                 }
 
-                internal DependencySetting _dependencySetting;
-                internal bool _isImmediate;
-                internal bool _hasPublicPathToRoot;
-                internal bool _hasPublicPathToImmediate;
-                internal bool _goesThroughDLL;
+                internal readonly DependencySetting _dependencySetting;
+                internal readonly bool _isImmediate;
+                internal readonly bool _hasPublicPathToRoot;
+                internal readonly bool _hasPublicPathToImmediate;
+                internal readonly bool _goesThroughDLL;
             }
 
             internal void Link(Builder builder)
@@ -2731,9 +2780,9 @@ namespace Sharpmake
                         resolvedPrivateDependencies.Add(dependency);
                     }
 
-                    bool isExport = dependency.Project.GetType().IsDefined(typeof(Export), false);
-                    bool compile = dependency.Project.GetType().IsDefined(typeof(Generate), false) ||
-                                   dependency.Project.GetType().IsDefined(typeof(Compile), false);
+                    bool isExport = dependency.Project.SharpmakeProjectType == ProjectTypeAttribute.Export;
+                    bool compile = dependency.Project.SharpmakeProjectType == ProjectTypeAttribute.Generate ||
+                                   dependency.Project.SharpmakeProjectType == ProjectTypeAttribute.Compile;
 
                     var dependencySetting = propagationSetting._dependencySetting;
                     if (dependencySetting != DependencySetting.OnlyBuildOrder)
@@ -2759,6 +2808,7 @@ namespace Sharpmake
                         if (wantIncludePaths && dependencySetting.HasFlag(DependencySetting.IncludePaths))
                         {
                             DependenciesIncludePaths.AddRange(dependency.IncludePaths);
+                            DependenciesIncludeSystemPaths.AddRange(dependency.IncludeSystemPaths);
                             _dependenciesResourceIncludePaths.AddRange(dependency.ResourceIncludePaths);
 
                             // Is there a case where we want the defines but *not* the include paths?
@@ -2799,7 +2849,7 @@ namespace Sharpmake
                                 }
 
                                 // If our no-output project is just a build-order dependency, update the build order accordingly
-                                if (!dependencyOutputLib && isImmediate && dependencySetting == DependencySetting.OnlyBuildOrder)
+                                if (!dependencyOutputLib && isImmediate && dependencySetting == DependencySetting.OnlyBuildOrder && !isExport)
                                     GenericBuildDependencies.Add(dependency);
                             }
                             break;
@@ -2807,7 +2857,7 @@ namespace Sharpmake
                             {
                                 if (dependency.ExportDllSymbols && (isImmediate || hasPublicPathToRoot || !goesThroughDLL))
                                 {
-                                    if (explicitDependenciesGlobal || !compile)
+                                    if (explicitDependenciesGlobal || !compile || (IsFastBuild && Util.IsDotNet(dependency)))
                                         PlatformRegistry.Get<IConfigurationTasks>(dependency.Platform).SetupDynamicLibraryPaths(this, dependencySetting, dependency);
                                     if (dependencySetting.HasFlag(DependencySetting.LibraryFiles))
                                         ConfigurationDependencies.Add(dependency);
@@ -2837,7 +2887,8 @@ namespace Sharpmake
                                     if (dependencySetting != DependencySetting.OnlyBuildOrder || ExecuteTargetCopy)
                                     {
                                         _resolvedTargetCopyFiles.Add(Path.Combine(dependency.TargetPath, dependency.TargetFileFullName + ".dll"));
-                                        if (!isExport) // Add PDBs only if the dependency is not an [export] project
+                                        // Add PDBs only if they exist and the dependency is not an [export] project
+                                        if (!isExport && Sharpmake.Options.GetObject<Options.Vc.Linker.GenerateDebugInformation>(dependency) != Sharpmake.Options.Vc.Linker.GenerateDebugInformation.Disable)
                                         {
                                             _resolvedTargetCopyFiles.Add(dependency.LinkerPdbFilePath);
 
@@ -2852,12 +2903,22 @@ namespace Sharpmake
                                 }
                                 _resolvedTargetDependsFiles.Add(Path.Combine(TargetPath, dependency.TargetFileFullName + ".dll"));
 
+                                // If this is not a .Net project, no .Net dependencies are needed
                                 if (Util.IsDotNet(this))
                                 {
-                                    if (hasPublicPathToRoot)
-                                        resolvedDotNetPublicDependencies.Add(new DotNetDependency(dependency));
-                                    else if (isImmediate)
-                                        resolvedDotNetPrivateDependencies.Add(new DotNetDependency(dependency));
+                                    // If the dependency is not a .Net project, it will not function properly when referenced by a .Net compilation process
+                                    if (Util.IsDotNet(dependency))
+                                    {
+                                        if (hasPublicPathToRoot)
+                                            resolvedDotNetPublicDependencies.Add(new DotNetDependency(dependency));
+                                        else if (isImmediate)
+                                            resolvedDotNetPrivateDependencies.Add(new DotNetDependency(dependency));
+                                    }
+                                    // If the dependency is not a .Net project, it need anyway to be compiled before this one, so we add it as post dependency in the solution
+                                    else if (isImmediate && !isExport)
+                                    {
+                                        GenericBuildDependencies.Add(dependency);
+                                    }
                                 }
                             }
                             break;
@@ -2924,7 +2985,7 @@ namespace Sharpmake
 
                 // Will include to the project to act as a project bridge:
                 //  - lib: add Library paths and files to be able to link the executable
-                //  - dll: Copy dll to the ouput path
+                //  - dll: Copy dll to the output path
                 _resolvedPrivateDependencies = resolvedPrivateDependencies.ToList();
 
                 DotNetPublicDependencies = resolvedDotNetPublicDependencies.ToList();

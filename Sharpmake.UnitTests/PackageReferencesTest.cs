@@ -12,14 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 using NUnit.Framework;
-
-using System;
-using System.IO;
 using System.Linq;
-using System.Reflection;
-using Sharpmake;
 
-namespace SharpmakeUnitTests
+namespace Sharpmake.UnitTests
 {
     [TestFixture]
     public class PackageReferencesCSharpTests : CSharpTestProjectBuilder

@@ -97,6 +97,155 @@ namespace Sharpmake.Generators.FastBuild
             }
         }
 
+        internal interface IResolvable
+        {
+            string Resolve(string rootPath, string bffFilePath, Resolver resolver);
+        }
+
+        internal class ExecNode : IResolvable
+        {
+            public string BuildStepKey;
+            public string ExecutableFile;
+            public Strings InputFiles;
+            public string OutputFile;
+            public string Arguments;
+            public string WorkingPath;
+            public bool UseStdOutAsOutput;
+            public bool AlwaysShowOutput;
+
+            public ExecNode(string buildStepKey, Project.Configuration.BuildStepExecutable buildStep)
+            {
+                BuildStepKey = buildStepKey;
+                ExecutableFile = buildStep.ExecutableFile;
+
+                IEnumerable<string> inputFiles = buildStep.FastBuildExecutableInputFiles.Count > 0 ? buildStep.FastBuildExecutableInputFiles : Enumerable.Repeat(buildStep.ExecutableInputFileArgumentOption, 1);
+                InputFiles = new Strings(inputFiles);
+
+                OutputFile = buildStep.ExecutableOutputFileArgumentOption;
+                Arguments = buildStep.ExecutableOtherArguments;
+                WorkingPath = buildStep.ExecutableWorkingDirectory;
+                UseStdOutAsOutput = buildStep.FastBuildUseStdOutAsOutput;
+                AlwaysShowOutput = buildStep.FastBuildAlwaysShowOutput;
+            }
+
+            public string Resolve(string rootPath, string bffFilePath, Resolver resolver)
+            {
+                var inputFiles = InputFiles.Select(f => UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, f));
+
+                using (resolver.NewScopedParameter("fastBuildPreBuildName", BuildStepKey))
+                using (resolver.NewScopedParameter("fastBuildPrebuildExeFile", UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, ExecutableFile)))
+                using (resolver.NewScopedParameter("fastBuildPreBuildInputFiles", UtilityMethods.FBuildFormatList(inputFiles.ToList(), 26)))
+                using (resolver.NewScopedParameter("fastBuildPreBuildOutputFile", UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, OutputFile)))
+                using (resolver.NewScopedParameter("fastBuildPreBuildArguments", string.IsNullOrWhiteSpace(Arguments) ? FileGeneratorUtilities.RemoveLineTag : Arguments))
+                using (resolver.NewScopedParameter("fastBuildPrebuildWorkingPath", UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, WorkingPath)))
+                using (resolver.NewScopedParameter("fastBuildPrebuildUseStdOutAsOutput", UseStdOutAsOutput ? "true" : FileGeneratorUtilities.RemoveLineTag))
+                using (resolver.NewScopedParameter("fastBuildPrebuildAlwaysShowOutput", AlwaysShowOutput ? "true" : FileGeneratorUtilities.RemoveLineTag))
+                {
+                    return resolver.Resolve(Bff.Template.ConfigurationFile.GenericExecutableSection);
+                }
+            }
+        }
+
+        internal class CopyNode : IResolvable
+        {
+            public string BuildStepKey;
+            public string Source;
+            public string Destination;
+
+            public CopyNode(string buildStepKey, Project.Configuration.BuildStepCopy buildStep)
+            {
+                BuildStepKey = buildStepKey;
+                Source = buildStep.SourcePath;
+                Destination = buildStep.DestinationPath;
+            }
+
+            public string Resolve(string rootPath, string bffFilePath, Resolver resolver)
+            {
+                var normalizedSource = UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, Source);
+                var normalizedDestination = UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, Destination);
+
+                using (resolver.NewScopedParameter("fastBuildCopyAlias", BuildStepKey))
+                using (resolver.NewScopedParameter("fastBuildCopySource", normalizedSource))
+                using (resolver.NewScopedParameter("fastBuildCopyDest", normalizedDestination))
+                {
+                    return resolver.Resolve(Bff.Template.ConfigurationFile.CopyFileSection);
+                }
+            }
+        }
+
+        internal class CopyDirNode : IResolvable
+        {
+            public string BuildStepKey;
+            public string Source;
+            public string Destination;
+            public bool Recurse;
+            public string FilePattern;
+
+            public CopyDirNode(string buildStepKey, Project.Configuration.BuildStepCopy buildStep)
+            {
+                BuildStepKey = buildStepKey;
+                Source = buildStep.SourcePath;
+                Destination = buildStep.DestinationPath;
+                Recurse = buildStep.IsRecurse;
+                FilePattern = buildStep.CopyPattern;
+            }
+
+            public string Resolve(string rootPath, string bffFilePath, Resolver resolver)
+            {
+                var normalizedSource = UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, Source);
+                var normalizedDestination = UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, Destination);
+
+                using (resolver.NewScopedParameter("fastBuildCopyDirName", BuildStepKey))
+                using (resolver.NewScopedParameter("fastBuildCopyDirSourcePath", Util.EnsureTrailingSeparator(normalizedSource)))
+                using (resolver.NewScopedParameter("fastBuildCopyDirDestinationPath", Util.EnsureTrailingSeparator(normalizedDestination)))
+                using (resolver.NewScopedParameter("fastBuildCopyDirRecurse", Recurse.ToString().ToLower()))
+                using (resolver.NewScopedParameter("fastBuildCopyDirPattern", UtilityMethods.GetBffFileCopyPattern(FilePattern)))
+                {
+                    return resolver.Resolve(Bff.Template.ConfigurationFile.CopyDirSection);
+                }
+            }
+        }
+
+        internal class TestNode : IResolvable
+        {
+            public string BuildStepKey;
+            public string Executable;
+            public string WorkingDir;
+            public string Output;
+            public string Arguments;
+            public int TimeOutInSeconds;
+            public bool AlwaysShowOutput;
+
+            public TestNode(string buildStepKey, Project.Configuration.BuildStepTest buildStep)
+            {
+                BuildStepKey = buildStepKey;
+                Executable = buildStep.TestExecutable;
+                WorkingDir = buildStep.TestWorkingDir;
+                Output = buildStep.TestOutput;
+                Arguments = buildStep.TestArguments;
+                TimeOutInSeconds = buildStep.TestTimeOutInSecond;
+                AlwaysShowOutput = buildStep.TestAlwaysShowOutput;
+            }
+
+            public string Resolve(string rootPath, string bffFilePath, Resolver resolver)
+            {
+                var normalizedExecutable = UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, Executable);
+                var normalizedWorkingDir = UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, WorkingDir);
+                var normalizedOutput = UtilityMethods.GetNormalizedPathForBuildStep(rootPath, bffFilePath, Output);
+
+                using (resolver.NewScopedParameter("fastBuildTest", BuildStepKey))
+                using (resolver.NewScopedParameter("fastBuildTestExecutable", normalizedExecutable))
+                using (resolver.NewScopedParameter("fastBuildTestWorkingDir", normalizedWorkingDir))
+                using (resolver.NewScopedParameter("fastBuildTestOutput", normalizedOutput))
+                using (resolver.NewScopedParameter("fastBuildTestArguments", string.IsNullOrWhiteSpace(Arguments) ? FileGeneratorUtilities.RemoveLineTag : Arguments))
+                using (resolver.NewScopedParameter("fastBuildTestTimeOut", TimeOutInSeconds == 0 ? FileGeneratorUtilities.RemoveLineTag : TimeOutInSeconds.ToString()))
+                using (resolver.NewScopedParameter("fastBuildTestAlwaysShowOutput", AlwaysShowOutput.ToString().ToLower()))
+                {
+                    return resolver.Resolve(Bff.Template.ConfigurationFile.TestSection);
+                }
+            }
+        }
+
         // This makefile command generator is for supporting legacy code without any client code change.
         internal class FastBuildDefaultMakeCommandGenerator : FastBuildMakeCommandGenerator
         {
@@ -128,11 +277,16 @@ namespace Sharpmake.Generators.FastBuild
         {
             public void ResolveUnities(Project project, string projectPath, ref Dictionary<Unity, List<Project.Configuration>> unities)
             {
-                foreach (var unityFile in unities)
+                foreach (var unitySection in unities)
                 {
-                    var unity = unityFile.Key;
+                    var unity = unitySection.Key;
+                    var unityConfigurations = unitySection.Value;
 
-                    int hashcode = unity.GetHashCode() ^ projectPath.GetHashCode();
+                    // Don't use Object.GetHashCode() on a int[] object from GetMergedFragmentValuesAcrossConfigurations() as it is
+                    // non-deterministic and depends on order of execution. String.GetHashCode() is stable as long as we don't use
+                    // <UseRandomizedStringHashAlgorithm enabled="1" /> in the application config file, or as long as we don't use
+                    // .NET Core. It can change between .NET versions, however; naming should be stable between different runs on the same machine.
+                    int hashcode = unity.GetHashCode() ^ projectPath.GetHashCode() ^ string.Join("_", unityConfigurations).GetHashCode();
 
                     unity.UnityName = $"{project.Name}_unity_{hashcode:X8}";
                     unity.UnityOutputPattern = unity.UnityName.ToLower() + "*.cpp";
@@ -150,48 +304,34 @@ namespace Sharpmake.Generators.FastBuild
 
                 List<FieldInfo> fragmentsInfos = null;
 
-                // first we merge the fragment values of all configurations sharing a unity
-                foreach (var unityFile in unities)
+                // merge the fragment values of all configurations sharing a unity
+                foreach (var unitySection in unities)
                 {
-                    var configurations = unityFile.Value;
+                    var configurations = unitySection.Value;
+                    var unityFragments = configurations.Select(x => x.Target.GetFragmentsValue()).ToList();
 
                     // get the fragment info from the first configuration target,
                     // which works as they all share the same Target type
                     if (fragmentsInfos == null)
                         fragmentsInfos = new List<FieldInfo>(configurations.First().Target.GetFragmentFieldInfo());
 
-                    var fragments = configurations.Select(x => x.Target.GetFragmentsValue()).ToList();
-                    var merged = fragments[0];
-                    for (int i = 1; i < fragments.Count; ++i)
-                    {
-                        var toMerge = fragments[i];
-                        for (int j = 0; j < toMerge.Length; ++j)
-                            merged[j] |= toMerge[j];
-                    }
-                    masks.Add(Tuple.Create(unityFile.Key, merged));
+                    var unityMerged = GetMergedFragments(unityFragments);
+                    masks.Add(Tuple.Create(unitySection.Key, unityMerged));
                 }
 
-                // then, figure out which fragments are different *across* unities
-                var differentFragmentIndices = new UniqueList<int>();
-                var fragmentValuesComparisonBase = masks[0].Item2;
-                for (int i = 1; i < masks.Count; ++i)
-                {
-                    var fragmentValues = masks[i].Item2;
-                    for (int j = 0; j < fragmentValues.Length; ++j)
-                    {
-                        if (fragmentValuesComparisonBase[j] != fragmentValues[j])
-                            differentFragmentIndices.Add(j);
-                    }
-                }
+                // get the fragment values for the whole project: could span multiple bff files
+                IEnumerable<Project.Configuration> fastBuildConfigurations = project.Configurations.Where(c => c.IsFastBuild);
+                int[] merged = GetMergedFragmentValuesAcrossConfigurations(fastBuildConfigurations);
 
                 // finally, create a unity name that only contains the varying fragments
-                foreach (var unityFile in masks)
+                foreach (var unitySection in masks)
                 {
-                    var unity = unityFile.Item1;
-                    var fragments = unityFile.Item2;
+                    var unity = unitySection.Item1;
+                    var unityFragments = unitySection.Item2;
+                    var differentFragmentIndices = GetDifferentFragmentIndices(merged, unityFragments);
 
                     string fragmentString = string.Empty;
-                    for (int i = 0; i < fragments.Length; ++i)
+                    for (int i = 0; i < unityFragments.Length; ++i)
                     {
                         // if not a differentiating fragment, skip
                         if (!differentFragmentIndices.Contains(i))
@@ -199,25 +339,36 @@ namespace Sharpmake.Generators.FastBuild
 
                         // Convert from int to the fragment enum type, so we can ToString() them.
                         // Fragments are enums by contract, so Enum.ToObject works
-                        var typedFragment = Enum.ToObject(fragmentsInfos[i].FieldType, fragments[i]);
+                        var typedFragment = Enum.ToObject(fragmentsInfos[i].FieldType, unityFragments[i]);
 
                         if (typedFragment is Platform)
                         {
                             Platform platformFragment = (Platform)typedFragment;
-                            string platformString = platformFragment.ToString();
-                            if (platformFragment >= Platform._reserved9)
-                                platformString = Util.GetSimplePlatformString(platformFragment);
-                            fragmentString += "_" + platformString.ToLower();
+                            foreach (Platform platformEnum in Enum.GetValues(typeof(Platform)))
+                            {
+                                if (!platformFragment.HasFlag(platformEnum))
+                                    continue;
+
+                                string platformString = platformEnum.ToString();
+                                if (platformEnum >= Platform._reserved9)
+                                    platformString = Util.GetSimplePlatformString(platformEnum);
+                                fragmentString += "_" + SanitizeForUnityName(platformString).ToLower();
+                            }
                         }
                         else
                         {
-                            fragmentString += "_" + typedFragment.ToString().Replace(",", "").Replace(" ", "");
+                            fragmentString += "_" + SanitizeForUnityName(typedFragment.ToString());
                         }
                     }
                     unity.UnityName = project.Name + fragmentString + "_unity";
                     unity.UnityOutputPattern = unity.UnityName.ToLower() + "*.cpp";
                 }
             }
+        }
+
+        private static string SanitizeForUnityName(string name)
+        {
+            return string.Join("_", name.Split(new[] { ' ', ':', '.', ',' }, StringSplitOptions.RemoveEmptyEntries));
         }
 
         public static string CurrentBffPathKeyCombine(string relativePath)
@@ -228,10 +379,81 @@ namespace Sharpmake.Generators.FastBuild
 
             return Path.Combine(Bff.CurrentBffPathKey, relativePath);
         }
+
+        private static int[] GetMergedFragments(List<int[]> fragments)
+        {
+            var merged = fragments[0];
+
+            for (int i = 1; i < fragments.Count; ++i)
+            {
+                var toMerge = fragments[i];
+                for (int j = 0; j < toMerge.Length; ++j)
+                    merged[j] |= toMerge[j];
+            }
+
+            return merged;
+        }
+
+        private static int[] GetMergedFragmentValuesAcrossConfigurations(IEnumerable<Project.Configuration> configurations)
+        {
+            var fragments = configurations.Select(x => x.Target.GetFragmentsValue()).ToList();
+            var merged = GetMergedFragments(fragments);
+
+            return merged;
+        }
+
+        private static List<int> GetDifferentFragmentIndices(int[] merged, int[] fragmentValuesComparisonBase)
+        {
+            var differentFragmentIndices = new List<int>();
+
+            // we want to store in that list the indices of fragments that are different from the base
+            for (int j = 0; j < merged.Length; ++j)
+            {
+                int value = fragmentValuesComparisonBase[j];
+                if (value != 0 && value != merged[j])
+                    differentFragmentIndices.Add(j);
+            }
+
+            return differentFragmentIndices;
+        }
     }
 
     internal static class UtilityMethods
     {
+        public static string GetFBuildCompilerFamily(this CompilerFamily compilerFamily)
+        {
+            switch (compilerFamily)
+            {
+                case CompilerFamily.MSVC: return "msvc";
+                case CompilerFamily.Clang: return "clang";
+                case CompilerFamily.GCC: return "gcc";
+                case CompilerFamily.SNC: return "snc";
+                case CompilerFamily.CodeWarriorWii: return "codewarrior-wii";
+                case CompilerFamily.CudaNVCC: return "cuda-nvcc";
+                case CompilerFamily.QtRCC: return "qt-rcc";
+                case CompilerFamily.VBCC: return "vbcc";
+                case CompilerFamily.OrbisWavePsslc: return "orbis-wave-psslc";
+                case CompilerFamily.ClangCl: return "clang-cl";
+                case CompilerFamily.Auto: return string.Empty;
+                default: throw new Exception("Unrecognized compiler family");
+            }
+        }
+
+        public static string GetFBuildLinkerType(this CompilerSettings.LinkerType linkerType)
+        {
+            switch (linkerType)
+            {
+                case CompilerSettings.LinkerType.CodeWarriorLd: return "codewarrior-ld";
+                case CompilerSettings.LinkerType.GCC: return "gcc";
+                case CompilerSettings.LinkerType.GreenHillsExlr: return "greenhills-exlr";
+                case CompilerSettings.LinkerType.MSVC: return "msvc";
+                case CompilerSettings.LinkerType.ClangOrbis: return "clang-orbis";
+                case CompilerSettings.LinkerType.SNCPS3: return "snc-ps3";
+                case CompilerSettings.LinkerType.Auto: return string.Empty;
+                default: throw new Exception("Unrecognized linker type");
+            }
+        }
+
         public static bool TestPlatformFlags(this UniqueList<Platform> platforms, Platform platformFlags)
         {
             return platforms.Any(platform => platformFlags.HasFlag(platform));
@@ -335,39 +557,39 @@ namespace Sharpmake.Generators.FastBuild
             return FBuildFormatList(items, spaceLength);
         }
 
+        public static string FBuildFormatSingleListItem(string item)
+        {
+            return string.Format("'{0}'", item);
+        }
+
         public static string FBuildFormatList(List<string> items, int spaceLength)
         {
             if (items.Count == 0)
                 return FileGeneratorUtilities.RemoveLineTag;
 
-            StringBuilder strBuilder = new StringBuilder(1024 * 16);
+            if (items.Count == 1)
+                return FBuildFormatSingleListItem(items.First());
 
             //
             // Write all selected items.
             //
+            StringBuilder strBuilder = new StringBuilder(1024 * 16);
 
-            if (items.Count == 1)
+            string indent = new string(' ', spaceLength);
+
+            strBuilder.Append("{");
+            strBuilder.AppendLine();
+
+            int itemIndex = 0;
+            foreach (string item in items)
             {
-                strBuilder.AppendFormat("'{0}'", items.First());
+                strBuilder.AppendFormat("{0}    '{1}'", indent, item);
+                if (++itemIndex < items.Count)
+                    strBuilder.AppendLine(",");
+                else
+                    strBuilder.AppendLine();
             }
-            else
-            {
-                string indent = new string(' ', spaceLength);
-
-                strBuilder.Append("{");
-                strBuilder.AppendLine();
-
-                int itemIndex = 0;
-                foreach (string item in items)
-                {
-                    strBuilder.AppendFormat("{0}    '{1}'", indent, item);
-                    if (++itemIndex < items.Count)
-                        strBuilder.AppendLine(",");
-                    else
-                        strBuilder.AppendLine();
-                }
-                strBuilder.AppendFormat("{0}}}", indent);
-            }
+            strBuilder.AppendFormat("{0}}}", indent);
 
             return strBuilder.ToString();
         }
@@ -386,7 +608,7 @@ namespace Sharpmake.Generators.FastBuild
 
             using (bffGenerator.Declare("fastBuildPreBuildName", relativeBuildStep.Description))
             using (bffGenerator.Declare("fastBuildPrebuildExeFile", relativeBuildStep.Executable))
-            using (bffGenerator.Declare("fastBuildPreBuildInputFile", relativeBuildStep.KeyInput))
+            using (bffGenerator.Declare("fastBuildPreBuildInputFiles", FBuildFormatSingleListItem(relativeBuildStep.KeyInput)))
             using (bffGenerator.Declare("fastBuildPreBuildOutputFile", relativeBuildStep.Output))
             using (bffGenerator.Declare("fastBuildPreBuildArguments", string.IsNullOrWhiteSpace(relativeBuildStep.ExecutableArguments) ? FileGeneratorUtilities.RemoveLineTag : relativeBuildStep.ExecutableArguments))
             // This is normally the project directory.
@@ -423,7 +645,7 @@ namespace Sharpmake.Generators.FastBuild
             return hasFastBuildConfig;
         }
 
-        public static string GetNormalizedPathForPostBuildEvent(string projectRootPath, string projectFolderPath, string path)
+        public static string GetNormalizedPathForBuildStep(string projectRootPath, string projectFolderPath, string path)
         {
             if (string.IsNullOrEmpty(path))
                 return FileGeneratorUtilities.RemoveLineTag;
@@ -433,6 +655,38 @@ namespace Sharpmake.Generators.FastBuild
 
             // keep the full path for the source if outside of the global root
             return path;
+        }
+
+        public static Bff.IResolvable GetResolveableFromBuildStep(string buildStepKey, Project.Configuration.BuildStepBase buildStep)
+        {
+            if (buildStep is Project.Configuration.BuildStepExecutable)
+            {
+                return new Bff.ExecNode(buildStepKey, buildStep as Project.Configuration.BuildStepExecutable);
+            }
+
+            if (buildStep is Project.Configuration.BuildStepCopy)
+            {
+                var copyStep = buildStep as Project.Configuration.BuildStepCopy;
+
+                if (copyStep.IsFileCopy)
+                {
+                    return new Bff.CopyNode(buildStepKey, copyStep);
+                }
+
+                return new Bff.CopyDirNode(buildStepKey, copyStep);
+            }
+
+            if (buildStep is Project.Configuration.BuildStepTest)
+            {
+                return new Bff.TestNode(buildStepKey, buildStep as Project.Configuration.BuildStepTest);
+            }
+
+            throw new Error("error, BuildStep not supported: {0}", buildStep.GetType().FullName);
+        }
+
+        public static List<Bff.IResolvable> GetResolvablesFromBuildSteps(Dictionary<string, Project.Configuration.BuildStepBase> buildSteps)
+        {
+            return buildSteps.Select(e => GetResolveableFromBuildStep(e.Key, e.Value)).ToList();
         }
     }
 }

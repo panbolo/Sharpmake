@@ -373,16 +373,16 @@ namespace Sharpmake.Generators.VisualStudio
                     {
                         fileGenerator.Write(Template.Solution.ProjectBegin);
                         Strings buildDepsGuids = new Strings(resolvedProject.Configurations.SelectMany(
-                            c => c.GenericBuildDependencies.Where(
-                                p => (p.Project is FastBuildAllProject) == false || fastBuildAllProjectForSolutionDependency == null || p.Project == fastBuildAllProjectForSolutionDependency.Project
-                            ).Select(
+                            c => c.GenericBuildDependencies.Select(
                                 p => p.ProjectGuid ?? ReadGuidFromProjectFile(p.ProjectFullFileNameWithExtension)
                             )
                         ));
 
                         if (fastBuildAllProjectForSolutionDependency != null)
                         {
-                            bool writeDependencyToFastBuildAll = resolvedProject.Configurations.Any(conf => conf.IsFastBuild && conf.Output == Project.Configuration.OutputType.Exe);
+                            bool writeDependencyToFastBuildAll = (resolvedProject.Configurations.Any(conf => conf.IsFastBuild && conf.Output == Project.Configuration.OutputType.Exe)) ||
+                                                                 solution.ProjectsDependingOnFastBuildAllForThisSolution.Contains(resolvedProject.Project);
+
                             if (writeDependencyToFastBuildAll)
                                 buildDepsGuids.Add(fastBuildAllProjectForSolutionDependency.UserData["Guid"] as string);
                         }
@@ -426,7 +426,7 @@ namespace Sharpmake.Generators.VisualStudio
 
             fileGenerator.Write(Template.Solution.GlobalBegin);
 
-            // Write source code control informations
+            // Write source code control information
             if (solution.PerforceRootPath != null)
             {
                 List<Solution.ResolvedProject> sccProjects = new List<Solution.ResolvedProject>();
@@ -481,7 +481,7 @@ namespace Sharpmake.Generators.VisualStudio
             // write solution configurations
             string visualStudioExe = GetVisualStudioIdePath(devEnv) + Util.WindowsSeparator + "devenv.com";
 
-            List<string> configurationSectionNames = new List<string>();
+            var configurationSectionNames = new List<string>();
 
             fileGenerator.Write(Template.Solution.GlobalSectionSolutionConfigurationBegin);
             foreach (Solution.Configuration solutionConfiguration in solutionConfigurations)
@@ -514,6 +514,9 @@ namespace Sharpmake.Generators.VisualStudio
             }
 
             configurationSectionNames.Sort();
+
+            VerifySectionNamesDuplicates(solutionFileInfo.FullName, solutionConfigurations, configurationSectionNames);
+
             foreach (string configurationSectionName in configurationSectionNames)
                 fileGenerator.Write(configurationSectionName);
 
@@ -597,7 +600,7 @@ namespace Sharpmake.Generators.VisualStudio
                     using (fileGenerator.Declare("solutionConf", solutionConfiguration))
                     using (fileGenerator.Declare("projectGuid", solutionProject.UserData["Guid"]))
                     using (fileGenerator.Declare("projectConf", projectConf))
-                    using (fileGenerator.Declare("projectPlatform", Util.GetPlatformString(projectPlatform, solutionProject.Project, true)))
+                    using (fileGenerator.Declare("projectPlatform", Util.GetPlatformString(projectPlatform, solutionProject.Project, solutionConfiguration.Target, true)))
                     using (fileGenerator.Declare("category", category))
                     using (fileGenerator.Declare("configurationName", configurationName))
                     {
@@ -691,6 +694,30 @@ namespace Sharpmake.Generators.VisualStudio
             return solutionFileInfo.FullName;
         }
 
+        // Will check that two configurations in the solution do not share the same name
+        private void VerifySectionNamesDuplicates(
+            string solutionFile,
+            IReadOnlyList<Solution.Configuration> solutionConfigurations,
+            List<string> configurationSectionNames
+        )
+        {
+            int count = configurationSectionNames.Count;
+            var distinctSectionNames = configurationSectionNames.Distinct().ToList();
+            if (count != distinctSectionNames.Count)
+            {
+                throw new Error(
+                    "Solution '{0}' contains distinct configurations with the same name, please add something to distinguish them:\n- {1}",
+                    solutionFile,
+                    string.Join(
+                        Environment.NewLine + "- ",
+                        solutionConfigurations.Select(
+                            sc => $"{sc.Name}|{sc.PlatformName} => '{sc}'"
+                        ).OrderBy(name => name)
+                    )
+                );
+            }
+        }
+
         private Solution.Configuration.IncludedProjectInfo ResolveStartupProject(Solution solution, IReadOnlyList<Solution.Configuration> solutionConfigurations)
         {
             // Set the default startup project.
@@ -772,7 +799,7 @@ namespace Sharpmake.Generators.VisualStudio
                 Project.Configuration firstConf = resolvedProject.Configurations.First();
                 if (firstConf.ProjectGuid == null)
                 {
-                    if (!firstConf.Project.GetType().IsDefined(typeof(Compile), false))
+                    if (firstConf.Project.SharpmakeProjectType != Project.ProjectTypeAttribute.Compile)
                         throw new Error("cannot read guid from existing project, project must have Compile attribute: {0}", resolvedProject.ProjectFile);
                     firstConf.ProjectGuid = ReadGuidFromProjectFile(resolvedProject.ProjectFile);
                 }

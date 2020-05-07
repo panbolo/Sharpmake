@@ -28,7 +28,7 @@ namespace Sharpmake
 
         public Builder Builder { get; }
 
-        public ConfigureOrder ConfigureOrder;
+        public ConfigureOrder ConfigureOrder = ConfigureOrder.New;
 
         public FileInfo MainFileInfo = null;
 
@@ -211,7 +211,7 @@ namespace Sharpmake
 
             foreach (Assembly assembly in assemblies)
             {
-                foreach (Type type in assembly.GetTypes())
+                foreach (Type type in assembly.GetTypes().Where(t => t.IsVisible))
                 {
                     foreach (MethodInfo methodInfo in type.GetMethods())
                     {
@@ -274,7 +274,7 @@ namespace Sharpmake
                         }
                         else
                         {
-                            throw new Error("error, class type note supported: {0}", type.FullName);
+                            throw new Error("error, class type not supported: {0}", type.FullName);
                         }
 
                         foreach (Type projectDependenciesType in projectDependenciesTypes)
@@ -319,7 +319,7 @@ namespace Sharpmake
             }
             else
             {
-                throw new Error("error, class type note supported: {0}", type.FullName);
+                throw new Error("error, class type not supported: {0}", type.FullName);
             }
 
             lock (_buildScheduledType)
@@ -470,13 +470,18 @@ namespace Sharpmake
         {
             using (new Util.StopwatchProfiler(ms => { ProfileWriteLine("    |{0,5} ms| load project {1}", ms, type.Name); }))
             {
-                if (!type.IsDefined(typeof(Generate), false) &&
-                !type.IsDefined(typeof(Compile), false) &&
-                !type.IsDefined(typeof(Export), false))
+                Project.ProjectTypeAttribute projectTypeAttribute;
+                if (type.IsDefined(typeof(Generate), false))
+                    projectTypeAttribute = Project.ProjectTypeAttribute.Generate;
+                else if (type.IsDefined(typeof(Export), false))
+                    projectTypeAttribute = Project.ProjectTypeAttribute.Export;
+                else if (type.IsDefined(typeof(Compile), false))
+                    projectTypeAttribute = Project.ProjectTypeAttribute.Compile;
+                else
                     throw new Error("cannot generate project type without [Sharpmake.Generate], [Sharpmake.Compile] or [Sharpmake.Export] attribute: {0}", type.Name);
 
                 // Create the project instance
-                Project project = Project.CreateProject(type, Arguments.FragmentMasks);
+                Project project = Project.CreateProject(type, Arguments.FragmentMasks, projectTypeAttribute);
 
                 // Pre event
                 EventPreProjectConfigure?.Invoke(project);
@@ -742,7 +747,7 @@ namespace Sharpmake
         private void DetermineUsedProjectConfigurations(List<Solution> solutions)
         {
             Trace.Assert(_usedProjectConfigurations == null);
-            Trace.Assert(_linked, "This method can only be called *after* the link has occured");
+            Trace.Assert(_linked, "This method can only be called *after* the link has occurred");
 
             // if this becomes too slow, we can move the creation of the list to the tasks per solution, and group them after
             var usedProjectConfigs = new HashSet<Project.Configuration>();
@@ -770,7 +775,7 @@ namespace Sharpmake
             Trace.Assert(_usedProjectConfigurations != null);
             foreach (Project p in projects)
             {
-                if (p.GetType().IsDefined(typeof(Export), false))
+                if (p.SharpmakeProjectType == Project.ProjectTypeAttribute.Export)
                     continue;
 
                 foreach (var conf in p.Configurations)
@@ -917,7 +922,7 @@ namespace Sharpmake
                         if (!generateProject)
                         {
                             if (_usedProjectConfigurations == null ||
-                                Arguments.TypesToGenerate.Contains(project.GetType()) || // generate the project if it was explicitely queried by the user-code
+                                Arguments.TypesToGenerate.Contains(project.GetType()) || // generate the project if it was explicitly queried by the user-code
                                 _usedProjectConfigurations.Contains(conf))
                             {
                                 generateProject = true;
@@ -947,7 +952,7 @@ namespace Sharpmake
 
         private void Generate(Project project)
         {
-            if (!project.GetType().IsDefined(typeof(Generate), false))
+            if (project.SharpmakeProjectType != Project.ProjectTypeAttribute.Generate)
                 return;
 
             foreach (KeyValuePair<string, List<Project.Configuration>> pair in project.ProjectFilesMapping)

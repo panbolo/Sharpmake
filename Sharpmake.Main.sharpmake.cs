@@ -51,7 +51,6 @@ namespace SharpmakeGen
                 _generateXmlDoc = generateXmlDoc;
 
                 RootPath = Globals.AbsoluteRootPath;
-                SourceRootPath = @"[project.RootPath]\[project.Name]";
 
                 if (excludeSharpmakeFiles)
                     SourceFilesExcludeRegex.Add(@".*\.sharpmake.cs");
@@ -72,6 +71,11 @@ namespace SharpmakeGen
 
                 conf.Options.Add(Options.CSharp.LanguageVersion.CSharp6);
                 conf.Options.Add(Options.CSharp.TreatWarningsAsErrors.Enabled);
+                conf.Options.Add(
+                    new Options.CSharp.WarningsNotAsErrors(
+                        618 // W1: CS0618: A class member was marked with the Obsolete attribute, such that a warning will be issued when the class member is referenced
+                    )
+                );
 
                 if (_generateXmlDoc)
                 {
@@ -111,7 +115,7 @@ namespace SharpmakeGen
                 t.IsSubclassOf(typeof(Platforms.PlatformProject))   ||
                 t.IsSubclassOf(typeof(Extensions.ExtensionProject)) ||
                 t.IsSubclassOf(typeof(Samples.SampleProject))       ||
-                t.IsSubclassOf(typeof(FunctionalTests.TestProject)))
+                t.IsSubclassOf(typeof(FunctionalTests.FunctionalTestProject)))
             )
             {
                 conf.AddProject(projectType, target);

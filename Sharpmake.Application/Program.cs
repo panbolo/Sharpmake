@@ -172,10 +172,16 @@ namespace Sharpmake.Application
             {
                 DebugEnable = CommandLine.ContainParameter("verbose") || CommandLine.ContainParameter("debug") || CommandLine.ContainParameter("diagnostics");
 
-                Version version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+                var sharpmakeAssembly = Assembly.GetExecutingAssembly();
+                Version version = sharpmakeAssembly.GetName().Version;
                 string versionString = string.Join(".", version.Major, version.Minor, version.Build);
-                if (version.Revision != 0)
+                string informationalVersion = sharpmakeAssembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+                if (version.Revision != 0 || informationalVersion == null || informationalVersion.IndexOf("+Branch.") == -1)
+                {
                     versionString += " (non-official)";
+                    if (DebugEnable && informationalVersion != null)
+                        versionString += " " + informationalVersion;
+                }
                 LogWriteLine($"sharpmake {versionString}");
                 LogWriteLine("  arguments : {0}", CommandLine.GetProgramCommandLine());
                 LogWriteLine("  directory : {0}", Directory.GetCurrentDirectory());
@@ -207,6 +213,7 @@ namespace Sharpmake.Application
                     throw new Error($"Only Sharpmake process can define symbols starting with {sharpmakeSymbolPrefix}. Invalid symbols defined: {invalidSymbolsString}");
                 }
 
+                parameters.Defines.Add(sharpmakeSymbolPrefix); // A generic sharpmake define to allow scripts to exclude part of code if not used with sharpmake
                 parameters.Defines.Add($"{sharpmakeSymbolPrefix}_{version.Major}_{version.Minor}_X");
                 parameters.Defines.Add($"{sharpmakeSymbolPrefix}_{version.Major}_{version.Minor}_{version.Build}");
 
@@ -373,19 +380,25 @@ namespace Sharpmake.Application
             LogSharpmakeExtensionLoaded(args.LoadedAssembly);
         }
 
-        private static void LogSharpmakeExtensionLoaded(Assembly assembly)
+        private static void LogSharpmakeExtensionLoaded(Assembly extensionAssembly)
         {
-            if (assembly == null)
+            if (extensionAssembly == null)
                 return;
 
-            if (!ExtensionLoader.ExtensionChecker.IsSharpmakeExtension(assembly))
+            if (!ExtensionLoader.ExtensionChecker.IsSharpmakeExtension(extensionAssembly))
                 return;
 
-            AssemblyName extensionName = assembly.GetName();
+            AssemblyName extensionName = extensionAssembly.GetName();
             Version version = extensionName.Version;
             string versionString = string.Join(".", version.Major, version.Minor, version.Build);
-
-            LogWriteLine("    {0} {1} loaded from '{2}'", extensionName.Name, versionString, assembly.Location);
+            string informationalVersion = extensionAssembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (version.Revision != 0 || informationalVersion == null || informationalVersion.IndexOf("+Branch.") == -1)
+            {
+                versionString += " (non-official)";
+                if (DebugEnable && informationalVersion != null)
+                    versionString += " " + informationalVersion;
+            }
+            LogWriteLine("    {0} {1} loaded from '{2}'", extensionName.Name, versionString, extensionAssembly.Location);
         }
 
         private static void CreateBuilderAndGenerate(BuildContext.BaseBuildContext buildContext, Argument parameters, bool generateDebugSolution)
@@ -563,7 +576,7 @@ namespace Sharpmake.Application
                 // Generate debug solution
                 if (generateDebugSolution)
                 {
-                    DebugProjectGenerator.GenerateDebugSolution(parameters.Sources, builder.Arguments, parameters.DebugSolutionStartArguments);
+                    DebugProjectGenerator.GenerateDebugSolution(parameters.Sources, builder.Arguments, parameters.DebugSolutionStartArguments, parameters.Defines.ToArray());
                     builder.BuildProjectAndSolution();
                     return builder;
                 }
@@ -577,6 +590,7 @@ namespace Sharpmake.Application
                     case Argument.InputType.Assembly:
                         builder.ExecuteEntryPointInAssemblies<Main>(builder.LoadAssemblies(parameters.Assemblies));
                         break;
+                    case Argument.InputType.Undefined:
                     default:
                         throw new Error("Sharpmake input missing, use /sources() or /assemblies()");
                 }
@@ -714,7 +728,7 @@ namespace Sharpmake.Application
                     var diffLines = diff.Key.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                     if (diffLines.Length == 0)
                     {
-                        DebugWriteLine($"        // only whitespace or casing changes");
+                        DebugWriteLine("        // only whitespace or casing changes");
                     }
                     else
                     {

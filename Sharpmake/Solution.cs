@@ -41,7 +41,7 @@ namespace Sharpmake
         public string SharpmakeCsPath { get; private set; }                 // Path of the CsFileName, ex: "c:\dev\MyProject"
 
         // FastBuild specific
-        public string FastBuildAllProjectName = "All";
+        public string FastBuildAllProjectName = "[solution.Name]_All";
         public string FastBuildAllProjectFileSuffix = "_All"; // the fastbuild all project will be named after the solution, but the suffix can be custom. Warning: this cannot be empty!
 
         public string FastBuildAllSolutionFolder = "FastBuild"; // set to null to add to the root
@@ -49,6 +49,12 @@ namespace Sharpmake
 
         // Experimental! Create solution dependencies from the FastBuild projects outputting Exe to the FastBuildAll project, to fix "F5" behavior in visual studio http://www.fastbuild.org/docs/functions/vssolution.html
         public bool FastBuildAllSlnDependencyFromExe = false;
+
+        /// <summary>
+        /// In case we've generated a "FastBuildAll" project, this flag will determine if we generate it for all
+        /// the configurations, or only the ones that need it
+        /// </summary>
+        public bool GenerateFastBuildAllOnlyForConfThatNeedIt = true;
 
         /// <summary>
         /// For adding additional files/folders to the solution
@@ -94,7 +100,11 @@ namespace Sharpmake
 
             public string ProjectName;
 
+            // The solution folder to use
             public string SolutionFolder;
+
+            // The solution folder, as reported by the solution. When set, this overrides the folder provided by the project config.
+            public string SolutionFolderOverride;
 
             public List<Project.Configuration> Configurations = new List<Project.Configuration>();
 
@@ -114,6 +124,7 @@ namespace Sharpmake
         }
 
         public Dictionary<string, List<Solution.Configuration>> SolutionFilesMapping { get; } = new Dictionary<string, List<Configuration>>();
+        internal List<Project> ProjectsDependingOnFastBuildAllForThisSolution { get; } = new List<Project>();
 
         internal class ResolvedProjectGuidComparer : IEqualityComparer<ResolvedProject>
         {
@@ -140,7 +151,7 @@ namespace Sharpmake
                 throw new Error(e, "Cannot create instances of type: {0}, caught exception message {1}. Make sure default ctor is public", solutionType.Name, e.Message);
             }
 
-            solution.Targets.AddFragmentMask(fragmentMasks.ToArray());
+            solution.Targets.SetGlobalFragmentMask(fragmentMasks.ToArray());
             solution.Targets.BuildTargets();
             return solution;
         }
@@ -173,7 +184,8 @@ namespace Sharpmake
                             OriginalProjectFile = includedProjectInfo.Configuration.ProjectFullFileName,
                             ProjectFile = Util.GetCapitalizedPath(includedProjectInfo.Configuration.ProjectFullFileNameWithExtension),
                             ProjectName = includedProjectInfo.Configuration.ProjectName,
-                            SolutionFolder = includedProjectInfo.SolutionFolder
+                            SolutionFolder = includedProjectInfo.SolutionFolder,
+                            SolutionFolderOverride = includedProjectInfo.SolutionFolder
                         });
 
                     resolvedProject.Configurations.Add(includedProjectInfo.Configuration);
@@ -188,14 +200,20 @@ namespace Sharpmake
             {
                 foreach (Project.Configuration resolvedProjectConf in resolvedProject.Configurations)
                 {
-                    // Folder must all be the same for all config, else will be emptied.
-                    if (string.IsNullOrEmpty(resolvedProject.SolutionFolder) &&
-                        !string.IsNullOrEmpty(resolvedProjectConf.SolutionFolder))
+                    // If the solution provides the folder, the configuration should be ignored
+                    if (string.IsNullOrEmpty(resolvedProject.SolutionFolderOverride))
                     {
-                        resolvedProject.SolutionFolder = resolvedProjectConf.SolutionFolder;
+                        // Folder must all be the same for all config, else will be emptied.
+                        if (string.IsNullOrEmpty(resolvedProject.SolutionFolder) &&
+                            !string.IsNullOrEmpty(resolvedProjectConf.SolutionFolder))
+                        {
+                            resolvedProject.SolutionFolder = resolvedProjectConf.SolutionFolder;
+                        }
+                        else if (resolvedProject.SolutionFolder != resolvedProjectConf.SolutionFolder)
+                        {
+                            resolvedProject.SolutionFolder = "";
+                        }
                     }
-                    else if (resolvedProject.SolutionFolder != resolvedProjectConf.SolutionFolder)
-                        resolvedProject.SolutionFolder = "";
 
                     foreach (Project.Configuration dependencyConfiguration in resolvedProjectConf.ResolvedDependencies)
                     {
@@ -311,17 +329,16 @@ namespace Sharpmake
                     foreach (Project.Configuration dependencyConfiguration in dependenciesConfiguration)
                     {
                         Project dependencyProject = dependencyConfiguration.Project;
-                        Type dependencyProjectType = dependencyProject.GetType();
-
-                        if (dependencyProjectType.IsDefined(typeof(Export), false))
+                        if (dependencyProject.SharpmakeProjectType == Project.ProjectTypeAttribute.Export)
                             continue;
 
+                        Type dependencyProjectType = dependencyProject.GetType();
                         ITarget dependencyProjectTarget = dependencyConfiguration.Target;
                         hasFastBuildProjectConf |= dependencyConfiguration.IsFastBuild;
 
                         Configuration.IncludedProjectInfo configurationProjectDependency = solutionConfiguration.GetProject(dependencyProjectType);
 
-                        // if that project was not explicitely added to the solution configuration, add it ourselves, as it is needed
+                        // if that project was not explicitly added to the solution configuration, add it ourselves, as it is needed
                         if (configurationProjectDependency == null)
                         {
                             configurationProjectDependency = new Configuration.IncludedProjectInfo
@@ -448,7 +465,6 @@ namespace Sharpmake
 
         private bool _resolved = false;
         private bool _dependenciesResolved = false;
-        private bool _generateFastBuildAllOnlyForConfThatNeedIt = true;
 
         private void Initialize(Type targetType, Type configurationType)
         {
@@ -470,7 +486,7 @@ namespace Sharpmake
             }
             else
             {
-                throw new InternalError("Cannot locate cs source for type: {}", GetType().FullName);
+                throw new InternalError("Cannot locate cs source for type: {0}", GetType().FullName);
             }
         }
 
@@ -515,7 +531,7 @@ namespace Sharpmake
                     var solutionConf = projectsToBuildInSolutionConfig.Item1;
                     var projectConfigsToBuild = projectsToBuildInSolutionConfig.Item2;
 
-                    if (_generateFastBuildAllOnlyForConfThatNeedIt && projectConfigsToBuild.Count == 1)
+                    if (GenerateFastBuildAllOnlyForConfThatNeedIt && projectConfigsToBuild.Count == 1)
                         continue;
 
                     var solutionTarget = solutionConf.Target;
@@ -529,7 +545,8 @@ namespace Sharpmake
                             Name = FastBuildAllProjectName,
                             RootPath = firstProject.Project.RootPath,
                             SourceRootPath = firstProject.Project.RootPath,
-                            IsFileNameToLower = firstProject.Project.IsFileNameToLower
+                            IsFileNameToLower = firstProject.Project.IsFileNameToLower,
+                            SharpmakeProjectType = Project.ProjectTypeAttribute.Generate
                         };
                     }
                     else
@@ -551,7 +568,7 @@ namespace Sharpmake
                     var solutionConf = projectsToBuildInSolutionConfig.Item1;
                     var projectConfigsToBuild = projectsToBuildInSolutionConfig.Item2;
 
-                    if (_generateFastBuildAllOnlyForConfThatNeedIt && projectConfigsToBuild.Count == 1)
+                    if (GenerateFastBuildAllOnlyForConfThatNeedIt && projectConfigsToBuild.Count == 1)
                         continue;
 
                     var solutionTarget = solutionConf.Target;
@@ -564,7 +581,7 @@ namespace Sharpmake
                     {
                         foreach (Project.Configuration config in projectConfigsToRelink.Distinct())
                         {
-                            config.GenericBuildDependencies.Add(projectConf);
+                            ProjectsDependingOnFastBuildAllForThisSolution.Add(config.Project);
                         }
                     }
 

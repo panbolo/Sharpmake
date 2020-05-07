@@ -14,7 +14,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Dynamic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -298,7 +297,7 @@ namespace Sharpmake
     /// This is used to match a publicly exposed enum to a private enum definition for example.
     /// </summary>
     /// <typeparam name="T">Source enum type</typeparam>
-    /// <typeparam name="TDest">Destionation enum type</typeparam>
+    /// <typeparam name="TDest">Destination enum type</typeparam>
     public class ReferenceAliasForwardManager<T, TDest> : ReferenceAliasManager<T> where T : struct, IConvertible
                                                                                    where TDest : struct, IConvertible
     {

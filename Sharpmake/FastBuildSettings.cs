@@ -27,7 +27,7 @@ namespace Sharpmake
     }
 
 
-    public class FastBuildSettings
+    public static class FastBuildSettings
     {
         public const string FastBuildConfigFileExtension = ".bff";
         public const string MasterBffFileName = "fbuild";
@@ -85,6 +85,7 @@ namespace Sharpmake
         public static bool FastBuildMonitor = false;
         public static bool FastBuildFastCancel = false;
         public static bool FastBuildUseIDE = true;
+        public static bool FastBuildNoUnity = false;
 
         /// <summary>
         /// Allows retention of build state across BFF changes. Requires v0.97
@@ -166,7 +167,7 @@ namespace Sharpmake
         /// <remarks>
         /// VS 2012 sometimes generates corrupted code when preprocessing an already preprocessed file when it encounters
         /// enum definitions.
-        /// Exemple:
+        /// Example:
         ///enum dateorder
         ///{
         ///    no_order, dmy, mdy, ymd, ydm

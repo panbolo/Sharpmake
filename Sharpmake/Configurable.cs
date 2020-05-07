@@ -131,21 +131,16 @@ namespace Sharpmake
             Targets.ClearTargets();
         }
 
-        private static ConcurrentDictionary<MethodInfo, object[]> s_cachedMethodInfoToConfigureAttributes = new ConcurrentDictionary<MethodInfo, object[]>();
-
         private static bool FilterMethodForTarget(MethodInfo configure, ITarget target)
         {
-            object[] attributes = s_cachedMethodInfoToConfigureAttributes.GetOrAdd(configure, c => configure.GetCustomAttributes(typeof(Configure), true));
-            foreach (Configure configureAttribute in attributes)
+            Configure configureAttribute = ConfigureCollection.GetConfigureAttribute(configure, inherit: true);
+            if (configureAttribute?.Flags != null)
             {
-                if (configureAttribute.Flags != null)
+                foreach (object fragmentValue in configureAttribute.Flags)
                 {
-                    foreach (object fragmentValue in configureAttribute.Flags)
+                    if (!target.AndMask(fragmentValue))
                     {
-                        if (!target.AndMask(fragmentValue))
-                        {
-                            return false;
-                        }
+                        return false;
                     }
                 }
             }
@@ -195,11 +190,10 @@ namespace Sharpmake
         {
         }
 
-
         private void InvokeConfigurationInternal(BuildContext.BaseBuildContext context)
         {
             _readOnly = true;
-            IEnumerable<MethodInfo> configureMethods = context.CreateConfigureCollection(GetType());
+            var configureMethods = context.CreateConfigureCollection(GetType()).ToList();
 
             // Clear current configurations
             _configurations.Clear();
@@ -208,7 +202,7 @@ namespace Sharpmake
 
             foreach (ITarget target in Targets.TargetObjects)
             {
-                string targetString = target.ToString();
+                string targetString = target.GetTargetString();
                 if (usedTargetNames.ContainsKey(targetString))
                 {
                     ITarget otherTarget = usedTargetNames[targetString];
@@ -221,8 +215,11 @@ namespace Sharpmake
                 conf.Construct(this, target);
                 _configurations.Add(conf);
                 var param = new object[] { conf, target };
-                foreach (MethodInfo method in configureMethods.Where(configure => FilterMethodForTarget(configure, target)))
+                foreach (MethodInfo method in configureMethods)
                 {
+                    if (!FilterMethodForTarget(method, target))
+                        continue;
+
                     try
                     {
                         method.Invoke(this, param);

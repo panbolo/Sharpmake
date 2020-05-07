@@ -7,6 +7,7 @@ if %errorlevel% NEQ 0 goto error
 :: main
 set ERRORLEVEL_BACKUP=0
 
+:: samples
 call :UpdateRef samples ConfigureOrder              main.sharpmake.cs                          reference         ConfigureOrder
 if not "%ERRORLEVEL_BACKUP%" == "0" goto error
 call :UpdateRef samples CPPCLI                      CLRTest.sharpmake.cs                       reference         CPPCLI
@@ -19,11 +20,24 @@ call :UpdateRef samples CSharpVsix                  CSharpVsix.sharpmake.cs     
 if not "%ERRORLEVEL_BACKUP%" == "0" goto error
 call :UpdateRef samples CSharpWCF                   CSharpWCF.sharpmake.cs                     reference         CSharpWCF\codebase
 if not "%ERRORLEVEL_BACKUP%" == "0" goto error
+call :UpdateRef samples CSharpImports               CSharpImports.sharpmake.cs                 reference         CSharpImports
+if not "%ERRORLEVEL_BACKUP%" == "0" goto error
 call :UpdateRef samples PackageReferences           PackageReferences.sharpmake.cs             reference         PackageReferences
 if not "%ERRORLEVEL_BACKUP%" == "0" goto error
 call :UpdateRef samples QTFileCustomBuild           QTFileCustomBuild.sharpmake.cs             reference         QTFileCustomBuild
 if not "%ERRORLEVEL_BACKUP%" == "0" goto error
 call :UpdateRef samples FastBuildSimpleExecutable   FastBuildSimpleExecutable.sharpmake.cs     reference         FastBuildSimpleExecutable
+if not "%ERRORLEVEL_BACKUP%" == "0" goto error
+call :UpdateRef samples SimpleExeLibDependency      SimpleExeLibDependency.sharpmake.cs        reference         SimpleExeLibDependency
+if not "%ERRORLEVEL_BACKUP%" == "0" goto error
+
+call :UpdateRef samples NetCore\DotNetCoreFrameworkHelloWorld    HelloWorld.sharpmake.cs       reference         NetCore\DotNetCoreFrameworkHelloWorld
+if not "%ERRORLEVEL_BACKUP%" == "0" goto error
+call :UpdateRef samples NetCore\DotNetFrameworkHelloWorld    HelloWorld.sharpmake.cs       reference         NetCore\DotNetFrameworkHelloWorld
+if not "%ERRORLEVEL_BACKUP%" == "0" goto error
+
+:: functional tests
+call :UpdateRef Sharpmake.FunctionalTests FastBuildFunctionalTest FastBuildFunctionalTest.sharpmake.cs reference FastBuildFunctionalTest
 if not "%ERRORLEVEL_BACKUP%" == "0" goto error
 
 @COLOR 2F
